@@ -79,7 +79,8 @@ class Database:
 
     def get_vehicles(self, search: str = "") -> list:
         return self.conn.execute(
-            "SELECT * FROM vehicles WHERE number LIKE ? ORDER BY id", (f"%{search}%",)
+            "SELECT * FROM vehicles WHERE number LIKE ? ORDER BY number",
+            (f"%{search}%",),
         ).fetchall()
 
     def update_status(self, entity_type: str, entity_id: int, status: str):
@@ -115,7 +116,7 @@ class Database:
 
     def get_commanders(self, search: str = "") -> list:
         return self.conn.execute(
-            "SELECT * FROM commanders WHERE name LIKE ? ORDER BY id", (f"%{search}%",)
+            "SELECT * FROM commanders WHERE name LIKE ? ORDER BY name", (f"%{search}%",)
         ).fetchall()
 
     # События
