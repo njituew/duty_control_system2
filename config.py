@@ -1,28 +1,16 @@
-"""
-Конфигурация: цветовая палитра, маппинги статусов и прочие константы.
-"""
+"""Конфигурация приложения: цвета, статусы, маппинги."""
 
 import os
+import sys
 import customtkinter as ctk
-
-# ── Тема ────────────────────────────────────────────────────────────────────
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
-# ── База данных ──────────────────────────────────────────────────────────────
-
-import sys
-
 
 def _get_db_path() -> str:
-    """
-    Если запущено как собранный .exe (PyInstaller),
-    кладём БД рядом с .exe файлом.
-    Если запущено как обычный скрипт — рядом с main.py.
-    """
+    """Путь к БД: рядом с .exe или рядом с main.py."""
     if getattr(sys, "frozen", False):
-        # sys.executable — путь к .exe файлу
         base = os.path.dirname(sys.executable)
     else:
         base = os.path.dirname(os.path.abspath(__file__))
@@ -31,8 +19,7 @@ def _get_db_path() -> str:
 
 DB_PATH = _get_db_path()
 
-# ── Цветовая палитра ─────────────────────────────────────────────────────────
-
+# Цветовая палитра
 C: dict[str, str] = {
     "bg": "#0f1117",
     "surface": "#1a1d27",
@@ -50,8 +37,7 @@ C: dict[str, str] = {
     "departed": "#f75f5f",
 }
 
-# ── Маппинги ─────────────────────────────────────────────────────────────────
-
+# Маппинги статусов и событий
 STATUS_MAP: dict[str, tuple[str, str, str]] = {
     "idle": ("●", C["idle"], "В ожидании"),
     "arrived": ("▲", C["arrived"], "Прибыл"),
@@ -77,5 +63,5 @@ EVENT_COLORS: dict[str, str] = {
     "deleted": C["red"],
 }
 
-# Порядок переключения статусов в EntityCard
+# Порядок переключения статусов
 STATUS_ORDER: list[str] = ["idle", "arrived", "departed"]

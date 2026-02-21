@@ -1,7 +1,4 @@
-"""
-Слой работы с базой данных (SQLite).
-Всё взаимодействие с БД — только через этот модуль.
-"""
+"""Работа с базой данных SQLite."""
 
 import sqlite3
 from datetime import datetime
@@ -10,7 +7,7 @@ from config import DB_PATH
 
 
 def _ts() -> str:
-    """Текущая метка времени в формате YYYY-MM-DD HH:MM:SS."""
+    """Текущая метка времени."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -20,9 +17,8 @@ class Database:
         self.conn.row_factory = sqlite3.Row
         self._migrate()
 
-    # ── Миграция схемы ───────────────────────────────────────────────────────
-
     def _migrate(self):
+        """Создание таблиц и миграция схемы."""
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -48,23 +44,17 @@ class Database:
         """
         )
         self.conn.commit()
-        # Миграция: добавить поле status для существующих записей, если его нет
-        try:
-            self.conn.execute(
-                "ALTER TABLE vehicles ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'"
-            )
-            self.conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Колонка уже существует
-        try:
-            self.conn.execute(
-                "ALTER TABLE commanders ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'"
-            )
-            self.conn.commit()
-        except sqlite3.OperationalError:
-            pass  # Колонка уже существует
+        # Миграция: добавить поле status
+        for table in ("vehicles", "commanders"):
+            try:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'"
+                )
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
-    # ── Транспортные средства ────────────────────────────────────────────────
+    # Транспортные средства
 
     def add_vehicle(self, number: str) -> int | None:
         """Добавить ТС. Возвращает id или None при дубликате."""
@@ -93,14 +83,14 @@ class Database:
         ).fetchall()
 
     def update_status(self, entity_type: str, entity_id: int, status: str):
-        """Обновить статус сущности (ТС или командира)."""
+        """Обновить статус сущности."""
         table = "vehicles" if entity_type == "vehicle" else "commanders"
         self.conn.execute(
             f"UPDATE {table} SET status = ? WHERE id = ?", (status, entity_id)
         )
         self.conn.commit()
 
-    # ── Командиры ────────────────────────────────────────────────────────────
+    # Командиры
 
     def add_commander(self, name: str) -> int | None:
         """Добавить командира. Возвращает id или None при дубликате."""
@@ -128,7 +118,7 @@ class Database:
             "SELECT * FROM commanders WHERE name LIKE ? ORDER BY id", (f"%{search}%",)
         ).fetchall()
 
-    # ── События ──────────────────────────────────────────────────────────────
+    # События
 
     def _log(self, entity_type: str, entity_id: int, entity_name: str, event_type: str):
         self.conn.execute(
@@ -141,7 +131,7 @@ class Database:
     def log_status(
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ):
-        """Публичный метод для логирования смены статуса."""
+        """Логирование смены статуса."""
         self._log(entity_type, entity_id, entity_name, event_type)
 
     def get_events(self, search: str = "", limit: int = 300) -> list:
@@ -157,7 +147,7 @@ class Database:
         self.conn.execute("DELETE FROM events")
         self.conn.commit()
 
-    # ── Статистика ───────────────────────────────────────────────────────────
+    # Статистика
 
     def stats(self) -> dict:
         def scalar(sql: str) -> int:

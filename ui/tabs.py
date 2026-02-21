@@ -1,9 +1,4 @@
-"""
-Вкладки главного окна:
-  - EntityTab   — список ТС или командиров
-  - HistoryTab  — таблица истории событий
-  - StatsTab    — статистика и последняя активность
-"""
+"""Вкладки: EntityTab, HistoryTab, StatsTab."""
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -14,11 +9,8 @@ from ui.components import EntityCard, ScrollableCardFrame
 from ui.dialogs import InputDialog
 
 
-# ── EntityTab ────────────────────────────────────────────────────────────────
-
-
 class EntityTab(ctk.CTkFrame):
-    """Базовая вкладка для ТС и командиров."""
+    """Вкладка списка ТС или командиров."""
 
     def __init__(
         self,
@@ -42,7 +34,6 @@ class EntityTab(ctk.CTkFrame):
         self.refresh()
 
     def _build(self, title: str, search_placeholder: str):
-        # Заголовок + кнопка "Добавить"
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -65,13 +56,11 @@ class EntityTab(ctk.CTkFrame):
             command=self._on_add,
         ).grid(row=0, column=1, sticky="e")
 
-        # Счётчик записей
         self._counter_lbl = ctk.CTkLabel(
             self, text="", font=ctk.CTkFont(size=11), text_color=C["subtext"]
         )
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=18, pady=(0, 4))
 
-        # Поиск
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
@@ -85,7 +74,6 @@ class EntityTab(ctk.CTkFrame):
             corner_radius=8,
         ).grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
 
-        # Контейнер карточек
         self._cards_frame = ScrollableCardFrame(self)
         self._cards_frame.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
@@ -136,9 +124,6 @@ class EntityTab(ctk.CTkFrame):
         self.refresh()
 
 
-# ── HistoryTab ───────────────────────────────────────────────────────────────
-
-
 class HistoryTab(ctk.CTkFrame):
     """Вкладка истории событий."""
 
@@ -153,7 +138,6 @@ class HistoryTab(ctk.CTkFrame):
         self.refresh()
 
     def _build(self):
-        # Заголовок + кнопки управления
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -192,7 +176,6 @@ class HistoryTab(ctk.CTkFrame):
             command=self._on_clear,
         ).pack(side="left")
 
-        # Поиск
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
@@ -206,14 +189,12 @@ class HistoryTab(ctk.CTkFrame):
             corner_radius=8,
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
-        # Таблица
         self._table = ctk.CTkScrollableFrame(
             self, fg_color=C["surface"], corner_radius=10
         )
         self._table.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self._table.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
-        # Заголовки таблицы (статичные — строка 0)
         for col, text in enumerate(self._TABLE_HEADERS):
             ctk.CTkLabel(
                 self._table,
@@ -227,7 +208,6 @@ class HistoryTab(ctk.CTkFrame):
         )
 
     def refresh(self):
-        # Удаляем строки данных (сохраняем заголовок row=0 и разделитель row=1)
         for widget in self._table.winfo_children():
             info = widget.grid_info()
             if info and int(info["row"]) > 1:
@@ -261,9 +241,6 @@ class HistoryTab(ctk.CTkFrame):
             self.refresh()
 
 
-# ── StatsTab ─────────────────────────────────────────────────────────────────
-
-
 class StatsTab(ctk.CTkFrame):
     """Вкладка статистики."""
 
@@ -276,7 +253,6 @@ class StatsTab(ctk.CTkFrame):
         self.refresh()
 
     def _build(self):
-        # Заголовок
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -300,11 +276,9 @@ class StatsTab(ctk.CTkFrame):
             command=self.refresh,
         ).grid(row=0, column=1, sticky="e")
 
-        # Ряд карточек со статами
         self._stats_row = ctk.CTkFrame(self, fg_color="transparent")
         self._stats_row.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 16))
 
-        # Блок последней активности
         self._recent_frame = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=10)
         self._recent_frame.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self._recent_frame.grid_columnconfigure(0, weight=1)
@@ -337,7 +311,6 @@ class StatsTab(ctk.CTkFrame):
         for widget in self._recent_frame.winfo_children():
             widget.destroy()
 
-        # Карточки с цифрами
         s = self.db.stats()
         cards_data = [
             ("ТС в базе", str(s["vehicles"]), C["accent"]),
@@ -349,7 +322,6 @@ class StatsTab(ctk.CTkFrame):
         for i, (title, value, color) in enumerate(cards_data):
             self._make_stat_card(self._stats_row, i, title, value, color)
 
-        # Последняя активность
         ctk.CTkLabel(
             self._recent_frame,
             text="Последние события",

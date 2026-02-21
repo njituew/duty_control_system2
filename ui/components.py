@@ -1,8 +1,4 @@
-"""
-Переиспользуемые UI-компоненты:
-  - EntityCard          — карточка одного ТС или командира
-  - ScrollableCardFrame — прокручиваемый контейнер для карточек
-"""
+"""UI-компоненты: EntityCard, ScrollableCardFrame."""
 
 from datetime import datetime
 
@@ -13,11 +9,7 @@ from database import Database
 
 
 class EntityCard(ctk.CTkFrame):
-    """
-    Карточка одного ТС или командира.
-    Клик по имени / индикатору циклически меняет статус:
-        В ожидании → Прибыл → Убыл → В ожидании → …
-    """
+    """Карточка ТС или командира. Клик меняет статус: idle → arrived → departed."""
 
     def __init__(
         self,
@@ -51,12 +43,9 @@ class EntityCard(ctk.CTkFrame):
         self._build(on_delete)
         self._apply_status()
 
-    # ── Построение виджета ───────────────────────────────────────────────────
-
     def _build(self, on_delete):
         self.grid_columnconfigure(1, weight=1)
 
-        # Статус-индикатор (кликабельный)
         self._dot = ctk.CTkLabel(
             self,
             text="●",
@@ -68,7 +57,6 @@ class EntityCard(ctk.CTkFrame):
         self._dot.grid(row=0, column=0, padx=(12, 4), pady=12)
         self._dot.bind("<Button-1>", self._cycle_status)
 
-        # Имя / номер
         name_lbl = ctk.CTkLabel(
             self,
             text=self.ename,
@@ -80,7 +68,6 @@ class EntityCard(ctk.CTkFrame):
         name_lbl.grid(row=0, column=1, sticky="w", padx=4)
         name_lbl.bind("<Button-1>", self._cycle_status)
 
-        # Подпись статуса
         self._status_lbl = ctk.CTkLabel(
             self,
             text="В ожидании",
@@ -90,7 +77,6 @@ class EntityCard(ctk.CTkFrame):
         )
         self._status_lbl.grid(row=1, column=1, sticky="w", padx=4, pady=(0, 10))
 
-        # Кнопка удаления
         ctk.CTkButton(
             self,
             text="✕",
@@ -104,15 +90,12 @@ class EntityCard(ctk.CTkFrame):
             corner_radius=6,
         ).grid(row=0, column=2, rowspan=2, padx=(4, 10))
 
-        # Разделитель снизу
         ctk.CTkFrame(self, height=1, fg_color=C["border"], corner_radius=0).grid(
             row=2, column=0, columnspan=3, sticky="ew"
         )
 
-    # ── Логика переключения статуса ──────────────────────────────────────────
-
     def _apply_status(self):
-        """Применить текущий статус к визуальным элементам карточки."""
+        """Применить текущий статус к визуальным элементам."""
         status = STATUS_ORDER[self._status_idx]
         icon, color, label = STATUS_MAP[status]
 
@@ -127,19 +110,16 @@ class EntityCard(ctk.CTkFrame):
         self._status_idx = (self._status_idx + 1) % len(STATUS_ORDER)
         status = STATUS_ORDER[self._status_idx]
 
-        # Сохраняем статус в БД
         self.db.update_status(self.entity_type, self.eid, status)
 
-        # Логируем событие
         if status in ("arrived", "departed"):
             self.db.log_status(self.entity_type, self.eid, self.ename, status)
 
-        # Обновляем визуальное отображение
         self._apply_status()
 
 
 class ScrollableCardFrame(ctk.CTkScrollableFrame):
-    """Прокручиваемый вертикальный контейнер для EntityCard."""
+    """Прокручиваемый контейнер для карточек."""
 
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)

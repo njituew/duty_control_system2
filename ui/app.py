@@ -1,6 +1,4 @@
-"""
-Главное окно приложения.
-"""
+"""Главное окно приложения."""
 
 from datetime import datetime
 
@@ -27,24 +25,15 @@ class App(ctk.CTk):
         self.geometry("1500x800")
         self.minsize(900, 600)
         self.configure(fg_color=C["bg"])
-        # try:
-        #     self.iconbitmap("icon.ico")
-        # except Exception as e:
-        #     print(f"Не удалось загрузить иконку: {e}")
-        # self.attributes('-fullscreen', True)  # Полный экран без рамок
 
         self.db = Database()
         self._build()
         self._maximize_window()
 
     def _maximize_window(self):
-        """Разворачивает окно на весь экран (с рамками) для macOS и Windows."""
+        """Разворачивает окно на весь экран."""
         self.update_idletasks()
-        # Используем state('zoomed') который работает на Windows
-        # Для macOS также работает в большинстве случаев
         self.state("zoomed")
-
-    # ── Построение UI ────────────────────────────────────────────────────────
 
     def _build(self):
         self.grid_rowconfigure(1, weight=1)
@@ -153,8 +142,6 @@ class App(ctk.CTk):
         for tab in self._tabs.values():
             tab.grid(row=0, column=0, sticky="nsew")
 
-    # ── Навигация ────────────────────────────────────────────────────────────
-
     def _show_tab(self, key: str):
         self._tabs[key].tkraise()
 
@@ -164,6 +151,5 @@ class App(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", text_color=C["subtext"])
 
-        # Обновляем данные при переключении на живые вкладки
         if key in ("history", "stats"):
             self._tabs[key].refresh()
