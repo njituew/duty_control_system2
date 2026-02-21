@@ -7,12 +7,12 @@ from tkinter import messagebox
 
 from config import C, EVENT_LABELS, EVENT_COLORS, STATUS_MAP, TYPE_LABELS
 from database import Database
-from ui.components import EntityCard, ScrollableCardFrame
+from ui.components import EntityTable
 from ui.dialogs import InputDialog
 
 
 class EntityTab(ctk.CTkFrame):
-    """Вкладка списка ТС или командиров."""
+    """Вкладка списка ТС или командиров (табличное представление)."""
 
     def __init__(
         self,
@@ -29,23 +29,37 @@ class EntityTab(ctk.CTkFrame):
         self.entity_type = entity_type
         self.add_prompt = add_prompt
 
-        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         self._build(title, search_placeholder)
         self.refresh()
 
     def _build(self, title: str, search_placeholder: str):
+        # --- Шапка ---
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
-        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
             header,
             text=title,
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=C["text"],
-        ).grid(row=0, column=0, sticky="w")
+        ).grid(row=0, column=0, sticky="w", padx=(0, 16))
+
+        self._search_var = ctk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self.refresh())
+        ctk.CTkEntry(
+            header,
+            textvariable=self._search_var,
+            placeholder_text=f"🔍  {search_placeholder}",
+            font=ctk.CTkFont(size=12),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=34,
+            corner_radius=8,
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 12))
 
         ctk.CTkButton(
             header,
@@ -54,51 +68,49 @@ class EntityTab(ctk.CTkFrame):
             fg_color=C["accent"],
             hover_color=C["accent_h"],
             corner_radius=8,
-            height=36,
+            height=34,
             command=self._on_add,
-        ).grid(row=0, column=1, sticky="e")
+        ).grid(row=0, column=2, sticky="e")
+
+        # --- Счётчик + подсказка по UX ---
+        hint_frame = ctk.CTkFrame(self, fg_color="transparent")
+        hint_frame.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 6))
+        hint_frame.grid_columnconfigure(0, weight=1)
 
         self._counter_lbl = ctk.CTkLabel(
-            self, text="", font=ctk.CTkFont(size=11), text_color=C["subtext"]
+            hint_frame, text="", font=ctk.CTkFont(size=11), text_color=C["subtext"]
         )
-        self._counter_lbl.grid(row=1, column=0, sticky="w", padx=18, pady=(0, 4))
+        self._counter_lbl.grid(row=0, column=0, sticky="w")
 
-        self._search_var = ctk.StringVar()
-        self._search_var.trace_add("write", lambda *_: self.refresh())
-        ctk.CTkEntry(
+        ctk.CTkLabel(
+            hint_frame,
+            text="Клик по строке — прибыл / убыл   ·   клик по 🗑 — удалить",
+            font=ctk.CTkFont(size=10),
+            text_color=C["subtext"],
+        ).grid(row=0, column=1, sticky="e")
+
+        # --- Таблица ---
+        self._table = EntityTable(
             self,
-            textvariable=self._search_var,
-            placeholder_text=f"🔍  {search_placeholder}",
-            font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
-            border_color=C["border"],
-            height=36,
-            corner_radius=8,
-        ).grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
-
-        self._cards_frame = ScrollableCardFrame(self)
-        self._cards_frame.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 12))
+            self.db,
+            self.entity_type,
+            on_changed=self._on_table_changed,
+        )
+        self._table.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def refresh(self):
-        self._cards_frame.clear()
         query = self._search_var.get().strip()
+        rows = (
+            self.db.get_vehicles(query)
+            if self.entity_type == "vehicle"
+            else self.db.get_commanders(query)
+        )
+        self._table.populate(rows)
+        self._counter_lbl.configure(text=f"Записей: {self._table.row_count()}")
 
-        if self.entity_type == "vehicle":
-            rows = self.db.get_vehicles(query)
-        else:
-            rows = self.db.get_commanders(query)
-
-        self._counter_lbl.configure(text=f"Записей: {len(rows)}")
-
-        for row in rows:
-            card = EntityCard(
-                self._cards_frame,
-                self.db,
-                self.entity_type,
-                row,
-                on_delete=self._on_delete_card,
-            )
-            self._cards_frame.add_card(card)
+    def _on_table_changed(self):
+        """Вызывается после удаления строки из таблицы."""
+        self._counter_lbl.configure(text=f"Записей: {self._table.row_count()}")
 
     def _on_add(self):
         dialog = InputDialog(self, title="Добавить", prompt=self.add_prompt)
@@ -115,15 +127,6 @@ class EntityTab(ctk.CTkFrame):
             messagebox.showwarning("Дубликат", f"«{text}» уже существует.", parent=self)
         else:
             self.refresh()
-
-    def _on_delete_card(self, card: EntityCard):
-        if not messagebox.askyesno("Удаление", f"Удалить «{card.ename}»?", parent=self):
-            return
-        if self.entity_type == "vehicle":
-            self.db.delete_vehicle(card.eid)
-        else:
-            self.db.delete_commander(card.eid)
-        self.refresh()
 
 
 class HistoryTab(ctk.CTkFrame):
