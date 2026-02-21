@@ -12,7 +12,24 @@ ctk.set_default_color_theme("dark-blue")
 
 # ── База данных ──────────────────────────────────────────────────────────────
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tac_control.db")
+import sys
+
+
+def _get_db_path() -> str:
+    """
+    Если запущено как собранный .exe (PyInstaller),
+    кладём БД рядом с .exe файлом.
+    Если запущено как обычный скрипт — рядом с main.py.
+    """
+    if getattr(sys, "frozen", False):
+        # sys.executable — путь к .exe файлу
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "tac_control.db")
+
+
+DB_PATH = _get_db_path()
 
 # ── Цветовая палитра ─────────────────────────────────────────────────────────
 
