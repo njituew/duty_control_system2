@@ -1,5 +1,7 @@
 """Вкладки: EntityTab, HistoryTab, StatsTab."""
 
+import tkinter as tk
+import tkinter.ttk as ttk
 import customtkinter as ctk
 from tkinter import messagebox
 
@@ -125,9 +127,16 @@ class EntityTab(ctk.CTkFrame):
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Вкладка истории событий."""
+    """Вкладка истории событий.
 
-    _TABLE_HEADERS = ["Время", "Тип", "Наименование", "Событие"]
+    Таблица реализована на ttk.Treeview — нативный виджет,
+    который рендерит только видимые строки, поэтому легко
+    справляется с тысячами записей без лагов.
+    """
+
+    _COLUMNS = ("ts", "type", "name", "event")
+    _COL_HEADERS = {"ts": "Время", "type": "Тип", "name": "Наименование", "event": "Событие"}
+    _COL_WIDTHS  = {"ts": 160,     "type": 100,   "name": 260,             "event": 120}
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -137,7 +146,16 @@ class HistoryTab(ctk.CTkFrame):
         self._build()
         self.refresh()
 
+    # ------------------------------------------------------------------
+    # Построение UI
+    # ------------------------------------------------------------------
+
     def _build(self):
+        self._build_header()
+        self._build_search()
+        self._build_tree()
+
+    def _build_header(self):
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -176,6 +194,7 @@ class HistoryTab(ctk.CTkFrame):
             command=self._on_clear,
         ).pack(side="left")
 
+    def _build_search(self):
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
@@ -189,49 +208,101 @@ class HistoryTab(ctk.CTkFrame):
             corner_radius=8,
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
-        self._table = ctk.CTkScrollableFrame(
-            self, fg_color=C["surface"], corner_radius=10
-        )
-        self._table.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self._table.grid_columnconfigure((0, 1, 2, 3), weight=1)
+    def _build_tree(self):
+        """Создаёт ttk.Treeview со стилями под тёмную тему."""
+        # Контейнер нужен чтобы растянуть Treeview + скроллбар вместе
+        container = tk.Frame(self, bg=C["surface"], bd=0, highlightthickness=0)
+        container.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
 
-        for col, text in enumerate(self._TABLE_HEADERS):
-            ctk.CTkLabel(
-                self._table,
-                text=text,
-                font=ctk.CTkFont(size=11, weight="bold"),
-                text_color=C["accent"],
-            ).grid(row=0, column=col, sticky="w", padx=12, pady=(8, 4))
-
-        ctk.CTkFrame(self._table, height=1, fg_color=C["border"]).grid(
-            row=1, column=0, columnspan=4, sticky="ew", padx=8, pady=2
+        # Стиль — красим под цветовую схему приложения
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure(
+            "History.Treeview",
+            background=C["surface"],
+            foreground=C["text"],
+            fieldbackground=C["surface"],
+            borderwidth=0,
+            rowheight=28,
+            font=("Segoe UI", 10),
         )
+        style.configure(
+            "History.Treeview.Heading",
+            background=C["card"],
+            foreground=C["accent"],
+            borderwidth=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.map(
+            "History.Treeview",
+            background=[("selected", C["card"])],
+            foreground=[("selected", C["text"])],
+        )
+        style.map("History.Treeview.Heading", relief=[("active", "flat")])
+        style.configure("History.Vertical.TScrollbar",
+            background=C["border"],
+            troughcolor=C["surface"],
+            arrowcolor=C["subtext"],
+            borderwidth=0,
+        )
+
+        self._tree = ttk.Treeview(
+            container,
+            columns=self._COLUMNS,
+            show="headings",       # убираем пустую колонку-иконку слева
+            style="History.Treeview",
+            selectmode="browse",
+        )
+
+        for col in self._COLUMNS:
+            self._tree.heading(col, text=self._COL_HEADERS[col])
+            self._tree.column(col, width=self._COL_WIDTHS[col], minwidth=60, anchor="w")
+
+        # Цветовые теги для типов событий
+        for event_type, color in EVENT_COLORS.items():
+            self._tree.tag_configure(event_type, foreground=color)
+        self._tree.tag_configure("default", foreground=C["text"])
+
+        vsb = ttk.Scrollbar(
+            container, orient="vertical",
+            command=self._tree.yview,
+            style="History.Vertical.TScrollbar",
+        )
+        self._tree.configure(yscrollcommand=vsb.set)
+
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
+    # ------------------------------------------------------------------
+    # Логика
+    # ------------------------------------------------------------------
 
     def refresh(self):
-        for widget in self._table.winfo_children():
-            info = widget.grid_info()
-            if info and int(info["row"]) > 1:
-                widget.destroy()
+        """Очищает и перезаполняет Treeview.
+
+        delete() + insert() — O(n) без создания виджетов,
+        поэтому 10 000 строк грузятся мгновенно.
+        """
+        # Удаляем все строки разом (одна операция)
+        self._tree.delete(*self._tree.get_children())
 
         events = self.db.get_events(self._search_var.get().strip())
 
-        for i, ev in enumerate(events):
-            row = i + 2
-            color = EVENT_COLORS.get(ev["event_type"], C["text"])
-            cells = [
-                ev["ts"],
-                TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
-                ev["entity_name"],
-                EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
-            ]
-            for col, value in enumerate(cells):
-                ctk.CTkLabel(
-                    self._table,
-                    text=value,
-                    font=ctk.CTkFont(size=11),
-                    text_color=color if col == 3 else C["text"],
-                    anchor="w",
-                ).grid(row=row, column=col, sticky="w", padx=12, pady=2)
+        for ev in events:
+            tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
+            self._tree.insert(
+                "",
+                "end",
+                values=(
+                    ev["ts"],
+                    TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
+                    ev["entity_name"],
+                    EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
+                ),
+                tags=(tag,),
+            )
 
     def _on_clear(self):
         if messagebox.askyesno(

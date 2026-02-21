@@ -35,8 +35,11 @@ class InputDialog(ctk.CTkToplevel):
             corner_radius=8,
         )
         self._entry.pack(fill="x", padx=24)
-        self._entry.focus()
         self._entry.bind("<Return>", self._confirm)
+        # На Windows CTkToplevel появляется чуть позже основного окна,
+        # поэтому focus() без after() не работает — окно ещё не получило
+        # системный фокус и игнорирует вызов
+        self.after(50, self._set_focus)
 
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(fill="x", padx=24, pady=14)
@@ -63,6 +66,11 @@ class InputDialog(ctk.CTkToplevel):
             corner_radius=8,
             command=self.destroy,
         ).pack(side="left", expand=True, fill="x")
+
+    def _set_focus(self):
+        self.lift()          # поднять поверх всех окон
+        self.focus_force()   # забрать системный фокус на окно
+        self._entry.focus_set()  # передать фокус полю ввода
 
     def _confirm(self, _=None):
         self._result = self._entry.get().strip()
