@@ -27,10 +27,10 @@ class App(ctk.CTk):
         self.geometry("1500x800")
         self.minsize(900, 600)
         self.configure(fg_color=C["bg"])
-        try:
-            self.iconbitmap("icon.ico")  # или "./icon.ico" если в той же папке
-        except Exception as e:
-            print(f"Не удалось загрузить иконку: {e}")
+        # try:
+        #     self.iconbitmap("icon.ico")
+        # except Exception as e:
+        #     print(f"Не удалось загрузить иконку: {e}")
         # self.attributes('-fullscreen', True)  # Полный экран без рамок
 
         self.db = Database()
