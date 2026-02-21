@@ -135,8 +135,13 @@ class HistoryTab(ctk.CTkFrame):
     """
 
     _COLUMNS = ("ts", "type", "name", "event")
-    _COL_HEADERS = {"ts": "Время", "type": "Тип", "name": "Наименование", "event": "Событие"}
-    _COL_WIDTHS  = {"ts": 160,     "type": 100,   "name": 260,             "event": 120}
+    _COL_HEADERS = {
+        "ts": "Время",
+        "type": "Тип",
+        "name": "Наименование",
+        "event": "Событие",
+    }
+    _COL_WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -241,7 +246,8 @@ class HistoryTab(ctk.CTkFrame):
             foreground=[("selected", C["text"])],
         )
         style.map("History.Treeview.Heading", relief=[("active", "flat")])
-        style.configure("History.Vertical.TScrollbar",
+        style.configure(
+            "History.Vertical.TScrollbar",
             background=C["border"],
             troughcolor=C["surface"],
             arrowcolor=C["subtext"],
@@ -251,7 +257,7 @@ class HistoryTab(ctk.CTkFrame):
         self._tree = ttk.Treeview(
             container,
             columns=self._COLUMNS,
-            show="headings",       # убираем пустую колонку-иконку слева
+            show="headings",  # убираем пустую колонку-иконку слева
             style="History.Treeview",
             selectmode="browse",
         )
@@ -266,7 +272,8 @@ class HistoryTab(ctk.CTkFrame):
         self._tree.tag_configure("default", foreground=C["text"])
 
         vsb = ttk.Scrollbar(
-            container, orient="vertical",
+            container,
+            orient="vertical",
             command=self._tree.yview,
             style="History.Vertical.TScrollbar",
         )

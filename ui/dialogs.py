@@ -68,8 +68,8 @@ class InputDialog(ctk.CTkToplevel):
         ).pack(side="left", expand=True, fill="x")
 
     def _set_focus(self):
-        self.lift()          # поднять поверх всех окон
-        self.focus_force()   # забрать системный фокус на окно
+        self.lift()  # поднять поверх всех окон
+        self.focus_force()  # забрать системный фокус на окно
         self._entry.focus_set()  # передать фокус полю ввода
 
     def _confirm(self, _=None):
