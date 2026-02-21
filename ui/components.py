@@ -42,9 +42,14 @@ class EntityCard(ctk.CTkFrame):
         self.ename = (
             row_data["number"] if entity_type == "vehicle" else row_data["name"]
         )
-        self._status_idx = 0
+        row_dict = dict(row_data)
+        self._status = row_dict.get("status", "idle")
+        self._status_idx = (
+            STATUS_ORDER.index(self._status) if self._status in STATUS_ORDER else 0
+        )
 
         self._build(on_delete)
+        self._apply_status()
 
     # ── Построение виджета ───────────────────────────────────────────────────
 
@@ -106,8 +111,8 @@ class EntityCard(ctk.CTkFrame):
 
     # ── Логика переключения статуса ──────────────────────────────────────────
 
-    def _cycle_status(self, _=None):
-        self._status_idx = (self._status_idx + 1) % len(STATUS_ORDER)
+    def _apply_status(self):
+        """Применить текущий статус к визуальным элементам карточки."""
         status = STATUS_ORDER[self._status_idx]
         icon, color, label = STATUS_MAP[status]
 
@@ -118,8 +123,19 @@ class EntityCard(ctk.CTkFrame):
         self._status_lbl.configure(text=display, text_color=color)
         self.configure(border_color=color if status != "idle" else C["border"])
 
+    def _cycle_status(self, _=None):
+        self._status_idx = (self._status_idx + 1) % len(STATUS_ORDER)
+        status = STATUS_ORDER[self._status_idx]
+
+        # Сохраняем статус в БД
+        self.db.update_status(self.entity_type, self.eid, status)
+
+        # Логируем событие
         if status in ("arrived", "departed"):
             self.db.log_status(self.entity_type, self.eid, self.ename, status)
+
+        # Обновляем визуальное отображение
+        self._apply_status()
 
 
 class ScrollableCardFrame(ctk.CTkScrollableFrame):

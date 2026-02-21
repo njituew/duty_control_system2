@@ -28,11 +28,13 @@ class Database:
             CREATE TABLE IF NOT EXISTS vehicles (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 number  TEXT NOT NULL UNIQUE,
+                status  TEXT NOT NULL DEFAULT 'idle',
                 created TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS commanders (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 name    TEXT NOT NULL UNIQUE,
+                status  TEXT NOT NULL DEFAULT 'idle',
                 created TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS events (
@@ -46,6 +48,21 @@ class Database:
         """
         )
         self.conn.commit()
+        # Миграция: добавить поле status для существующих записей, если его нет
+        try:
+            self.conn.execute(
+                "ALTER TABLE vehicles ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
+        try:
+            self.conn.execute(
+                "ALTER TABLE commanders ADD COLUMN status TEXT NOT NULL DEFAULT 'idle'"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Колонка уже существует
 
     # ── Транспортные средства ────────────────────────────────────────────────
 
@@ -74,6 +91,14 @@ class Database:
         return self.conn.execute(
             "SELECT * FROM vehicles WHERE number LIKE ? ORDER BY id", (f"%{search}%",)
         ).fetchall()
+
+    def update_status(self, entity_type: str, entity_id: int, status: str):
+        """Обновить статус сущности (ТС или командира)."""
+        table = "vehicles" if entity_type == "vehicle" else "commanders"
+        self.conn.execute(
+            f"UPDATE {table} SET status = ? WHERE id = ?", (status, entity_id)
+        )
+        self.conn.commit()
 
     # ── Командиры ────────────────────────────────────────────────────────────
 

@@ -26,7 +26,7 @@ def _get_db_path() -> str:
         base = os.path.dirname(sys.executable)
     else:
         base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, "tac_control.db")
+    return os.path.join(base, "database.db")
 
 
 DB_PATH = _get_db_path()
