@@ -12,7 +12,7 @@ from ui.dialogs import InputDialog
 
 
 class EntityTab(ctk.CTkFrame):
-    """Вкладка списка ТС или командиров (табличное представление)."""
+    """Вкладка списка ТС или командиров."""
 
     def __init__(
         self,
@@ -36,7 +36,6 @@ class EntityTab(ctk.CTkFrame):
         self.refresh()
 
     def _build(self, title: str, search_placeholder: str):
-        # --- Шапка ---
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(1, weight=1)
@@ -72,7 +71,6 @@ class EntityTab(ctk.CTkFrame):
             command=self._on_add,
         ).grid(row=0, column=2, sticky="e")
 
-        # --- Счётчик + подсказка по UX ---
         hint_frame = ctk.CTkFrame(self, fg_color="transparent")
         hint_frame.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 6))
         hint_frame.grid_columnconfigure(0, weight=1)
@@ -89,7 +87,6 @@ class EntityTab(ctk.CTkFrame):
             text_color=C["subtext"],
         ).grid(row=0, column=1, sticky="e")
 
-        # --- Таблица ---
         self._table = EntityTable(
             self,
             self.db,
@@ -109,7 +106,6 @@ class EntityTab(ctk.CTkFrame):
         self._counter_lbl.configure(text=f"Записей: {self._table.row_count()}")
 
     def _on_table_changed(self):
-        """Вызывается после удаления строки из таблицы."""
         self._counter_lbl.configure(text=f"Записей: {self._table.row_count()}")
 
     def _on_add(self):
@@ -130,12 +126,7 @@ class EntityTab(ctk.CTkFrame):
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Вкладка истории событий.
-
-    Таблица реализована на ttk.Treeview — нативный виджет,
-    который рендерит только видимые строки, поэтому легко
-    справляется с тысячами записей без лагов.
-    """
+    """Вкладка истории событий (ttk.Treeview)."""
 
     _COLUMNS = ("ts", "type", "name", "event")
     _COL_HEADERS = {
@@ -153,10 +144,6 @@ class HistoryTab(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self._build()
         self.refresh()
-
-    # ------------------------------------------------------------------
-    # Построение UI
-    # ------------------------------------------------------------------
 
     def _build(self):
         self._build_header()
@@ -218,13 +205,11 @@ class HistoryTab(ctk.CTkFrame):
 
     def _build_tree(self):
         """Создаёт ttk.Treeview со стилями под тёмную тему."""
-        # Контейнер нужен чтобы растянуть Treeview + скроллбар вместе
         container = tk.Frame(self, bg=C["surface"], bd=0, highlightthickness=0)
         container.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
         container.grid_rowconfigure(0, weight=1)
         container.grid_columnconfigure(0, weight=1)
 
-        # Стиль — красим под цветовую схему приложения
         style = ttk.Style()
         style.theme_use("default")
         style.configure(
@@ -260,7 +245,7 @@ class HistoryTab(ctk.CTkFrame):
         self._tree = ttk.Treeview(
             container,
             columns=self._COLUMNS,
-            show="headings",  # убираем пустую колонку-иконку слева
+            show="headings",
             style="History.Treeview",
             selectmode="browse",
         )
@@ -269,7 +254,6 @@ class HistoryTab(ctk.CTkFrame):
             self._tree.heading(col, text=self._COL_HEADERS[col])
             self._tree.column(col, width=self._COL_WIDTHS[col], minwidth=60, anchor="w")
 
-        # Цветовые теги для типов событий
         for event_type, color in EVENT_COLORS.items():
             self._tree.tag_configure(event_type, foreground=color)
         self._tree.tag_configure("default", foreground=C["text"])
@@ -285,17 +269,7 @@ class HistoryTab(ctk.CTkFrame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-    # ------------------------------------------------------------------
-    # Логика
-    # ------------------------------------------------------------------
-
     def refresh(self):
-        """Очищает и перезаполняет Treeview.
-
-        delete() + insert() — O(n) без создания виджетов,
-        поэтому 10 000 строк грузятся мгновенно.
-        """
-        # Удаляем все строки разом (одна операция)
         self._tree.delete(*self._tree.get_children())
 
         events = self.db.get_events(self._search_var.get().strip())

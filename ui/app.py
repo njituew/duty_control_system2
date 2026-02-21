@@ -31,7 +31,7 @@ class App(ctk.CTk):
         self._maximize_window()
 
     def _maximize_window(self):
-        """Разворачивает окно на весь экран (кросс-платформенно)."""
+        """Разворачивает окно на весь экран."""
         self.update_idletasks()
         w = self.winfo_screenwidth()
         h = self.winfo_screenheight()

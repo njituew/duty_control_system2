@@ -18,7 +18,7 @@ class Database:
         self._migrate()
 
     def _migrate(self):
-        """Создание таблиц и миграция схемы."""
+        """Создание таблиц."""
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -44,7 +44,6 @@ class Database:
         """
         )
         self.conn.commit()
-        # Миграция: добавить поле status
         for table in ("vehicles", "commanders"):
             try:
                 self.conn.execute(

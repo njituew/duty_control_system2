@@ -1,4 +1,4 @@
-"""UI-компоненты: EntityTable, StatusButton."""
+"""UI-компоненты: EntityTable."""
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -9,7 +9,7 @@ from database import Database
 
 
 def _apply_table_style(style_name: str):
-    """Применяет тёмную тему к ttk.Treeview с заданным именем стиля."""
+    """Применяет тёмную тему к ttk.Treeview."""
     style = ttk.Style()
     style.theme_use("default")
     style.configure(
@@ -45,15 +45,7 @@ def _apply_table_style(style_name: str):
 
 
 class EntityTable(tk.Frame):
-    """
-    Таблица ТС или командиров на базе ttk.Treeview.
-
-    Каждая строка — кнопка переключения статуса: arrived ↔ departed.
-    Колонка действий содержит кнопку удаления.
-
-    Компоновка колонок:
-        status_icon | name | status_label | last_change | (delete btn — через overlay)
-    """
+    """Таблица ТС или командиров на базе ttk.Treeview."""
 
     _COLUMNS = ("icon", "name", "status", "changed", "del")
     _HEADERS = {
@@ -65,7 +57,6 @@ class EntityTable(tk.Frame):
     }
     _WIDTHS = {"icon": 42, "name": 260, "status": 130, "changed": 160, "del": 40}
 
-    # Тексты и цвета статусов для строк таблицы
     _STATUS_DISPLAY = {
         "idle": ("●", C["idle"], "В ожидании"),
         "arrived": ("▲", C["arrived"], "Прибыл"),
@@ -76,20 +67,14 @@ class EntityTable(tk.Frame):
         super().__init__(master, bg=C["bg"], **kwargs)
         self.db = db
         self.entity_type = entity_type
-        self._on_changed = (
-            on_changed  # callback: вызывается после delete (для счётчика)
-        )
-        self._rows: dict[int, dict] = {}  # eid → {status, name, iid}
+        self._on_changed = on_changed
+        self._rows: dict[int, dict] = {}
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         _apply_table_style("Entity")
         self._build()
-
-    # ------------------------------------------------------------------
-    # Построение
-    # ------------------------------------------------------------------
 
     def _build(self):
         container = tk.Frame(self, bg=C["surface"], bd=0, highlightthickness=0)
@@ -112,16 +97,11 @@ class EntityTable(tk.Frame):
                 width=self._WIDTHS[col],
                 minwidth=self._WIDTHS[col],
                 anchor="center" if col in ("icon", "del") else "w",
-                stretch=(col == "name"),  # только колонка имени растягивается
+                stretch=(col == "name"),
             )
 
-        # Цветовые теги строк по статусу
-        # foreground в теге имеет приоритет над стилем виджета,
-        # но при состоянии selected ttk всё равно перекрывает его белым.
-        # Решение: отключаем выделение строки (нет смысла выделять строку в этой таблице)
         for status, (_, color, _) in self._STATUS_DISPLAY.items():
             self._tree.tag_configure(status, foreground=color)
-        # Чередование строк (зебра)
         self._tree.tag_configure("odd", background=C["card"])
         self._tree.tag_configure("even", background=C["surface"])
 
@@ -136,24 +116,17 @@ class EntityTable(tk.Frame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-        # Клик по строке — переключить статус
         self._tree.bind("<ButtonRelease-1>", self._on_click)
-        # Сразу снимаем выделение — иначе ttk перекрывает цвет тега статуса
         self._tree.bind(
             "<<TreeviewSelect>>",
             lambda _: self._tree.selection_remove(*self._tree.selection()),
         )
 
-        # Подсказка при наведении
         self._tree.bind("<Motion>", self._on_motion)
         self._tooltip_iid: str = ""
 
-    # ------------------------------------------------------------------
-    # Публичный API
-    # ------------------------------------------------------------------
-
     def populate(self, rows):
-        """Полная перезагрузка данных."""
+        """Заполнить таблицу данными."""
         self._rows.clear()
         self._tree.delete(*self._tree.get_children())
 
@@ -179,10 +152,6 @@ class EntityTable(tk.Frame):
             )
             self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
 
-    # ------------------------------------------------------------------
-    # Обработчики событий
-    # ------------------------------------------------------------------
-
     def _on_click(self, event):
         region = self._tree.identify_region(event.x, event.y)
         if region != "cell":
@@ -202,7 +171,7 @@ class EntityTable(tk.Frame):
             self._toggle_status(eid)
 
     def _toggle_status(self, eid: int):
-        """Переключает arrived ↔ departed. Из idle первый клик → arrived."""
+        """Переключить статус: arrived ↔ departed."""
         row = self._rows.get(eid)
         if not row:
             return
@@ -240,7 +209,7 @@ class EntityTable(tk.Frame):
         self._on_changed()
 
     def _on_motion(self, event):
-        """Меняет курсор на указатель над строками."""
+        """Сменить курсор при наведении на строку."""
         iid = self._tree.identify_row(event.y)
         if iid != self._tooltip_iid:
             self._tooltip_iid = iid
@@ -249,11 +218,6 @@ class EntityTable(tk.Frame):
 
     def row_count(self) -> int:
         return len(self._rows)
-
-
-# ------------------------------------------------------------------
-# Вспомогательные функции
-# ------------------------------------------------------------------
 
 
 def _now_short() -> str:

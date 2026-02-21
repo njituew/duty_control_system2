@@ -1,13 +1,11 @@
-"""
-Модальные диалоги приложения.
-"""
+"""Модальные диалоги."""
 
 import customtkinter as ctk
 from config import C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """Модальный диалог ввода одной строки текста."""
+    """Модальный диалог ввода текста."""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
@@ -36,9 +34,6 @@ class InputDialog(ctk.CTkToplevel):
         )
         self._entry.pack(fill="x", padx=24)
         self._entry.bind("<Return>", self._confirm)
-        # На Windows CTkToplevel появляется чуть позже основного окна,
-        # поэтому focus() без after() не работает — окно ещё не получило
-        # системный фокус и игнорирует вызов
         self.after(50, self._set_focus)
 
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -68,9 +63,9 @@ class InputDialog(ctk.CTkToplevel):
         ).pack(side="left", expand=True, fill="x")
 
     def _set_focus(self):
-        self.lift()  # поднять поверх всех окон
-        self.focus_force()  # забрать системный фокус на окно
-        self._entry.focus_set()  # передать фокус полю ввода
+        self.lift()
+        self.focus_force()
+        self._entry.focus_set()
 
     def _confirm(self, _=None):
         self._result = self._entry.get().strip()
