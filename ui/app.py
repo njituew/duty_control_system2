@@ -23,10 +23,15 @@ class App(ctk.CTk):
 
     def __init__(self):
         super().__init__()
-        self.title("Система контроля ТС и командования")
-        self.geometry("1100x720")
+        self.title("Система контроля")
+        self.geometry("1500x800")
         self.minsize(900, 600)
         self.configure(fg_color=C["bg"])
+        try:
+            self.iconbitmap("icon.ico")  # или "./icon.ico" если в той же папке
+        except Exception as e:
+            print(f"Не удалось загрузить иконку: {e}")
+        # self.attributes('-fullscreen', True)  # Полный экран без рамок
 
         self.db = Database()
         self._build()
