@@ -313,7 +313,7 @@ class StatsTab(ctk.CTkFrame):
 
         s = self.db.stats()
         cards_data = [
-            ("ТС в базе", str(s["vehicles"]), C["accent"]),
+            ("ТС", str(s["vehicles"]), C["accent"]),
             ("Командиров", str(s["commanders"]), C["green"]),
             ("Прибытий", str(s["arrivals"]), C["green"]),
             ("Убытий", str(s["departures"]), C["red"]),
