@@ -35,6 +35,14 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
+        self._maximize_window()
+
+    def _maximize_window(self):
+        """Разворачивает окно на весь экран (с рамками) для macOS и Windows."""
+        self.update_idletasks()
+        # Используем state('zoomed') который работает на Windows
+        # Для macOS также работает в большинстве случаев
+        self.state("zoomed")
 
     # ── Построение UI ────────────────────────────────────────────────────────
 
