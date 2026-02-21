@@ -11,4 +11,4 @@ pip install pyinstaller
 ```bash
 pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
 ```
-(случай когда окружение в папке `.venv`)
+(случай, когда окружение в папке `.venv`)
