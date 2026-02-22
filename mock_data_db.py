@@ -7,6 +7,7 @@ from database import Database
 DATABASE_PATH = "database.db"
 COUNT = 500
 
+
 def generate_vehicle_numbers(count: int) -> list[str]:
     """Генерирует уникальные номера автомобилей."""
     numbers = []

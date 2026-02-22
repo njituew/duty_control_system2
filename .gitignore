@@ -1,6 +1,7 @@
 # project
 TODO.md
 .DS_Store
+mock_data_db.py
 
 # database
 
@@ -235,4 +236,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-mock_data_db.py
