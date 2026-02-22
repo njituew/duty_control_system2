@@ -4,7 +4,7 @@ from datetime import datetime
 
 import customtkinter as ctk
 
-from config import C, ICON_PATH
+from config import C
 from database import Database
 from ui.tabs import EntityTab, HistoryTab, StatsTab
 
@@ -29,15 +29,6 @@ class App(ctk.CTk):
         self.db = Database()
         self._build()
         self._maximize_window()
-        self.after(0, self._set_icon)
-
-    def _set_icon(self):
-        """Устанавливает иконку окна. Вызывается через after(), чтобы
-        перезаписать иконку CustomTkinter, которую он ставит в __init__."""
-        try:
-            self.iconbitmap(ICON_PATH)
-        except Exception:
-            pass  # Иконка не критична — молча игнорируем
 
     def _maximize_window(self):
         """Разворачивает окно на весь экран."""
