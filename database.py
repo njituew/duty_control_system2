@@ -169,10 +169,14 @@ class Database:
             return self.conn.execute(sql).fetchone()[0]
 
         return {
-            "vehicles":     scalar("SELECT COUNT(*) FROM vehicles"),
-            "commanders":   scalar("SELECT COUNT(*) FROM commanders"),
-            "arrivals":     scalar("SELECT COUNT(*) FROM events WHERE event_type='arrived'"),
-            "departures":   scalar("SELECT COUNT(*) FROM events WHERE event_type='departed'"),
+            "vehicles": scalar("SELECT COUNT(*) FROM vehicles"),
+            "commanders": scalar("SELECT COUNT(*) FROM commanders"),
+            "arrivals": scalar(
+                "SELECT COUNT(*) FROM events WHERE event_type='arrived'"
+            ),
+            "departures": scalar(
+                "SELECT COUNT(*) FROM events WHERE event_type='departed'"
+            ),
             "total_events": scalar("SELECT COUNT(*) FROM events"),
         }
 

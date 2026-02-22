@@ -147,7 +147,9 @@ class HistoryTab(ctk.CTkFrame):
         self._build_header()
         self._build_search()
 
-        self._tree_widget = EventTreeview(self, heading_color=C["accent"], row_height=28)
+        self._tree_widget = EventTreeview(
+            self, heading_color=C["accent"], row_height=28
+        )
         self._tree_widget.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def _build_header(self):
@@ -208,7 +210,9 @@ class HistoryTab(ctk.CTkFrame):
         self._tree_widget.populate(events)
 
     def _on_clear(self):
-        if messagebox.askyesno("Очистить историю", "Удалить всю историю событий?", parent=self):
+        if messagebox.askyesno(
+            "Очистить историю", "Удалить всю историю событий?", parent=self
+        ):
             self.db.clear_events()
             self.refresh()
 
@@ -217,10 +221,10 @@ class StatsTab(ctk.CTkFrame):
     """Вкладка статистики."""
 
     _STAT_CARDS = [
-        ("ТС",            "vehicles",     "accent"),
-        ("Командиров",    "commanders",   "green"),
-        ("Прибытий",      "arrivals",     "green"),
-        ("Убытий",        "departures",   "red"),
+        ("ТС", "vehicles", "accent"),
+        ("Командиров", "commanders", "green"),
+        ("Прибытий", "arrivals", "green"),
+        ("Убытий", "departures", "red"),
         ("Всего событий", "total_events", "yellow"),
     ]
 
@@ -254,7 +258,9 @@ class StatsTab(ctk.CTkFrame):
             row=1, column=0, sticky="ew", padx=12, pady=(0, 6)
         )
 
-        self._recent_tree = EventTreeview(recent_panel, heading_color=C["accent"], row_height=28)
+        self._recent_tree = EventTreeview(
+            recent_panel, heading_color=C["accent"], row_height=28
+        )
         self._recent_tree.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def _build_header(self):
@@ -309,7 +315,9 @@ class StatsTab(ctk.CTkFrame):
 
         stats = self.db.stats()
         for i, (title, key, color_key) in enumerate(self._STAT_CARDS):
-            self._make_stat_card(self._stats_row, i, title, str(stats[key]), C[color_key])
+            self._make_stat_card(
+                self._stats_row, i, title, str(stats[key]), C[color_key]
+            )
 
         recent = self.db.recent_activity(10)
         self._recent_tree.populate(recent)

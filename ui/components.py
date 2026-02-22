@@ -11,6 +11,7 @@ from database import Database
 
 # ─────────────────────────── Стили Treeview ───────────────────────────────────
 
+
 def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int = 11):
     """Применяет тёмную тему к ttk.Treeview с заданным именем стиля."""
     style = ttk.Style()
@@ -49,6 +50,7 @@ def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int =
 
 # ─────────────────────────── EventTreeview ────────────────────────────────────
 
+
 class EventTreeview(tk.Frame):
     """
     Переиспользуемый виджет таблицы событий (история, статистика).
@@ -60,12 +62,19 @@ class EventTreeview(tk.Frame):
     """
 
     _COLUMNS = ("ts", "type", "name", "event")
-    _HEADERS = {"ts": "Время", "type": "Тип", "name": "Наименование", "event": "Событие"}
-    _WIDTHS   = {"ts": 160, "type": 100, "name": 260, "event": 120}
+    _HEADERS = {
+        "ts": "Время",
+        "type": "Тип",
+        "name": "Наименование",
+        "event": "Событие",
+    }
+    _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
     _instance_count = 0  # Для уникальных имён стилей
 
-    def __init__(self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs):
+    def __init__(
+        self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
+    ):
         super().__init__(master, bg=C["surface"], bd=0, highlightthickness=0, **kwargs)
 
         EventTreeview._instance_count += 1
@@ -134,23 +143,24 @@ class EventTreeview(tk.Frame):
 
 # ─────────────────────────── EntityTable ──────────────────────────────────────
 
+
 class EntityTable(tk.Frame):
     """Таблица ТС или командиров на базе ttk.Treeview."""
 
     _COLUMNS = ("icon", "name", "status", "changed", "del")
     _HEADERS = {
-        "icon":    "",
-        "name":    "Наименование",
-        "status":  "Статус",
+        "icon": "",
+        "name": "Наименование",
+        "status": "Статус",
         "changed": "Изменён",
-        "del":     "",
+        "del": "",
     }
     _WIDTHS = {"icon": 42, "name": 260, "status": 130, "changed": 160, "del": 40}
 
     _STATUS_DISPLAY = {
-        "idle":     ("●", C["idle"],    "В ожидании"),
-        "arrived":  ("▲", C["arrived"], "Прибыл"),
-        "departed": ("▼", C["departed"],"Убыл"),
+        "idle": ("●", C["idle"], "В ожидании"),
+        "arrived": ("▲", C["arrived"], "Прибыл"),
+        "departed": ("▼", C["departed"], "Убыл"),
     }
 
     def __init__(self, master, db: Database, entity_type: str, on_changed, **kwargs):
@@ -192,7 +202,7 @@ class EntityTable(tk.Frame):
 
         for status, (_, color, _) in self._STATUS_DISPLAY.items():
             self._tree.tag_configure(status, foreground=color)
-        self._tree.tag_configure("odd",  background=C["card"])
+        self._tree.tag_configure("odd", background=C["card"])
         self._tree.tag_configure("even", background=C["surface"])
 
         vsb = ttk.Scrollbar(
@@ -221,16 +231,19 @@ class EntityTable(tk.Frame):
 
         for i, row in enumerate(rows):
             row_dict = dict(row)
-            eid    = row_dict["id"]
-            name   = row_dict.get("number") or row_dict.get("name", "")
+            eid = row_dict["id"]
+            name = row_dict.get("number") or row_dict.get("name", "")
             status = row_dict.get("status", "idle")
-            ts     = row_dict.get("updated", row_dict.get("created", ""))[:16]
+            ts = row_dict.get("updated", row_dict.get("created", ""))[:16]
 
-            icon, _, label = self._STATUS_DISPLAY.get(status, self._STATUS_DISPLAY["idle"])
+            icon, _, label = self._STATUS_DISPLAY.get(
+                status, self._STATUS_DISPLAY["idle"]
+            )
             zebra = "odd" if i % 2 else "even"
 
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 iid=str(eid),
                 values=(icon, name, label, ts, "🗑"),
                 tags=(status, zebra),
@@ -245,9 +258,9 @@ class EntityTable(tk.Frame):
         if not iid:
             return
 
-        col_id   = self._tree.identify_column(event.x)
+        col_id = self._tree.identify_column(event.x)
         col_name = self._tree.column(col_id, option="id")
-        eid      = int(iid)
+        eid = int(iid)
 
         if col_name == "del":
             self._delete_row(eid)
