@@ -82,7 +82,7 @@ class EntityTab(ctk.CTkFrame):
 
         ctk.CTkLabel(
             hint_frame,
-            text="Клик по строке — прибыл / убыл   ·   клик по 🗑 — удалить",
+            text="Нажатие по строке — прибыл / убыл   ·   нажатие по 🗑 — удалить запись",
             font=ctk.CTkFont(size=10),
             text_color=C["subtext"],
         ).grid(row=0, column=1, sticky="e")
