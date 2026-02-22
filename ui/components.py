@@ -179,8 +179,7 @@ class EntityTable(tk.Frame):
         current = row["status"]
         new_status = "departed" if current == "arrived" else "arrived"
 
-        self.db.update_status(self.entity_type, eid, new_status)
-        self.db.log_status(self.entity_type, eid, row["name"], new_status)
+        self.db.update_status_and_log(self.entity_type, eid, row["name"], new_status)
 
         row["status"] = new_status
         icon, _, label = self._STATUS_DISPLAY[new_status]

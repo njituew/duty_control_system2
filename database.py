@@ -15,6 +15,9 @@ class Database:
     def __init__(self, path: str = DB_PATH):
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # windows optimization
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
         self._migrate()
 
     def _migrate(self):
@@ -83,12 +86,11 @@ class Database:
         ).fetchall()
 
     def update_status(self, entity_type: str, entity_id: int, status: str):
-        """Обновить статус сущности."""
+        """Обновить статус сущности (без commit — вызывается вместе с log_status)."""
         table = "vehicles" if entity_type == "vehicle" else "commanders"
         self.conn.execute(
             f"UPDATE {table} SET status = ? WHERE id = ?", (status, entity_id)
         )
-        self.conn.commit()
 
     # Командиры
 
@@ -125,6 +127,21 @@ class Database:
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
             (entity_type, entity_id, entity_name, event_type, _ts()),
+        )
+        self.conn.commit()
+
+    def update_status_and_log(
+        self, entity_type: str, entity_id: int, entity_name: str, status: str
+    ):
+        """Обновить статус и записать событие в одной транзакции (один commit)."""
+        table = "vehicles" if entity_type == "vehicle" else "commanders"
+        self.conn.execute(
+            f"UPDATE {table} SET status = ? WHERE id = ?", (status, entity_id)
+        )
+        self.conn.execute(
+            "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (entity_type, entity_id, entity_name, status, _ts()),
         )
         self.conn.commit()
 
