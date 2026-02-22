@@ -388,6 +388,75 @@ class StatsTab(ctk.CTkFrame):
             fill="x", padx=12, pady=(0, 6)
         )
 
+        # Контейнер для таблицы
+        tree_container = tk.Frame(
+            self._recent_frame, bg=C["surface"], bd=0, highlightthickness=0
+        )
+        tree_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
+
+        style = ttk.Style()
+        style.configure(
+            "Stats.Treeview",
+            background=C["surface"],
+            foreground=C["text"],
+            fieldbackground=C["surface"],
+            borderwidth=0,
+            rowheight=28,
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "Stats.Treeview.Heading",
+            background=C["card"],
+            foreground=C["accent"],
+            borderwidth=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.map(
+            "Stats.Treeview",
+            background=[("selected", C["card"])],
+            foreground=[("selected", C["text"])],
+        )
+        style.map("Stats.Treeview.Heading", relief=[("active", "flat")])
+        style.configure(
+            "Stats.Vertical.TScrollbar",
+            background=C["border"],
+            troughcolor=C["surface"],
+            arrowcolor=C["subtext"],
+            borderwidth=0,
+        )
+
+        columns = ("ts", "type", "name", "event")
+        col_headers = {"ts": "Время", "type": "Тип", "name": "Наименование", "event": "Событие"}
+        col_widths = {"ts": 160, "type": 100, "name": 260, "event": 120}
+
+        tree = ttk.Treeview(
+            tree_container,
+            columns=columns,
+            show="headings",
+            style="Stats.Treeview",
+            selectmode="browse",
+        )
+        for col in columns:
+            tree.heading(col, text=col_headers[col])
+            tree.column(col, width=col_widths[col], minwidth=60, anchor="w")
+
+        for event_type, color in EVENT_COLORS.items():
+            tree.tag_configure(event_type, foreground=color)
+        tree.tag_configure("default", foreground=C["text"])
+
+        vsb = ttk.Scrollbar(
+            tree_container,
+            orient="vertical",
+            command=tree.yview,
+            style="Stats.Vertical.TScrollbar",
+        )
+        tree.configure(yscrollcommand=vsb.set)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
         recent = self.db.recent_activity(10)
         if not recent:
             ctk.CTkLabel(
@@ -399,28 +468,15 @@ class StatsTab(ctk.CTkFrame):
             return
 
         for ev in recent:
-            color = EVENT_COLORS.get(ev["event_type"], C["text"])
-            icon = STATUS_MAP.get(ev["event_type"], ("◆", C["text"], "?"))[0]
-
-            row_frame = ctk.CTkFrame(self._recent_frame, fg_color="transparent")
-            row_frame.pack(fill="x", padx=16, pady=2)
-            row_frame.grid_columnconfigure(1, weight=1)
-
-            ctk.CTkLabel(
-                row_frame, text=f"  {icon}", text_color=color, font=ctk.CTkFont(size=14)
-            ).grid(row=0, column=0, padx=(0, 8))
-
-            ctk.CTkLabel(
-                row_frame,
-                text=f"{ev['entity_name']}  —  {EVENT_LABELS.get(ev['event_type'], ev['event_type'])}",
-                text_color=C["text"],
-                font=ctk.CTkFont(size=12),
-                anchor="w",
-            ).grid(row=0, column=1, sticky="w")
-
-            ctk.CTkLabel(
-                row_frame,
-                text=ev["ts"][11:19],
-                text_color=C["subtext"],
-                font=ctk.CTkFont(size=11),
-            ).grid(row=0, column=2, padx=8)
+            tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    ev["ts"],
+                    TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
+                    ev["entity_name"],
+                    EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
+                ),
+                tags=(tag,),
+            )
