@@ -1,6 +1,22 @@
 # project
-database.db
 TODO.md
+
+# database
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+
+# SQLite WAL mode files
+*.db-wal
+*.sqlite-wal
+*.sqlite3-wal
+
+# SQLite shared memory files
+*.db-shm
+*.sqlite-shm
+*.sqlite3-shm
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
