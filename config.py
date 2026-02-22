@@ -8,16 +8,23 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 
-def _get_db_path() -> str:
-    """Путь к БД: рядом с .exe или рядом с main.py."""
+def _resource_path(filename: str) -> str:
+    """
+    Возвращает абсолютный путь к ресурсу.
+
+    - При запуске как .exe (PyInstaller) — ищет в папке рядом с .exe,
+      так как --add-data копирует файлы туда через sys._MEIPASS.
+    - При обычном запуске — ищет рядом с этим файлом (корень проекта).
+    """
     if getattr(sys, "frozen", False):
         base = os.path.dirname(sys.executable)
     else:
         base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, "database.db")
+    return os.path.join(base, filename)
 
 
-DB_PATH = _get_db_path()
+DB_PATH = _resource_path("database.db")
+ICON_PATH = _resource_path("icon.ico")
 
 # Цветовая палитра
 C: dict[str, str] = {

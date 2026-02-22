@@ -9,6 +9,6 @@ pip install pyinstaller
 
 Команда для сборки приложения на Windows:
 ```bash
-pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
+pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data "icon.ico;." --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
 ```
 (случай, когда окружение в папке `.venv`)
