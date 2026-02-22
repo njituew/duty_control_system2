@@ -9,9 +9,6 @@ from config import C, EVENT_COLORS
 from database import Database
 
 
-# ─────────────────────────── Стили Treeview ───────────────────────────────────
-
-
 def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int = 11):
     """Применяет тёмную тему к ttk.Treeview с заданным именем стиля."""
     style = ttk.Style()
@@ -48,9 +45,6 @@ def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int =
     )
 
 
-# ─────────────────────────── EventTreeview ────────────────────────────────────
-
-
 class EventTreeview(tk.Frame):
     """
     Переиспользуемый виджет таблицы событий (история, статистика).
@@ -70,7 +64,7 @@ class EventTreeview(tk.Frame):
     }
     _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
-    _instance_count = 0  # Для уникальных имён стилей
+    _instance_count = 0  # для уникальных имён стилей ttk
 
     def __init__(
         self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
@@ -139,9 +133,6 @@ class EventTreeview(tk.Frame):
                 ),
                 tags=(tag,),
             )
-
-
-# ─────────────────────────── EntityTable ──────────────────────────────────────
 
 
 class EntityTable(tk.Frame):

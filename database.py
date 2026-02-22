@@ -57,7 +57,7 @@ class Database:
                 )
                 self.conn.commit()
             except sqlite3.OperationalError:
-                pass  # Колонка уже существует
+                pass  # колонка уже есть
 
     # ─────────────────────── Транспортные средства ────────────────────
 
