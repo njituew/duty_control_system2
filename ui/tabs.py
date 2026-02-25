@@ -4,7 +4,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from config import C
-from database import Database
+from database import Database, DatabaseError, DuplicateError
 from ui.components import EntityTable, EventTreeview
 from ui.dialogs import InputDialog
 
@@ -120,16 +120,17 @@ class EntityTab(ctk.CTkFrame):
         if not text:
             return
 
-        result = (
-            self.db.add_vehicle(text)
-            if self.entity_type == "vehicle"
-            else self.db.add_commander(text)
-        )
-
-        if result is None:
-            messagebox.showwarning("Дубликат", f"«{text}» уже существует.", parent=self)
-        else:
+        try:
+            (
+                self.db.add_vehicle(text)
+                if self.entity_type == "vehicle"
+                else self.db.add_commander(text)
+            )
             self.refresh()
+        except DuplicateError:
+            messagebox.showwarning("Дубликат", f"«{text}» уже существует.", parent=self)
+        except (DatabaseError, ValueError) as e:
+            messagebox.showerror("Ошибка", str(e), parent=self)
 
 
 class HistoryTab(ctk.CTkFrame):
@@ -213,7 +214,10 @@ class HistoryTab(ctk.CTkFrame):
         if messagebox.askyesno(
             "Очистить историю", "Удалить всю историю событий?", parent=self
         ):
-            self.db.clear_events()
+            try:
+                self.db.clear_events()
+            except DatabaseError as e:
+                messagebox.showerror("Ошибка", str(e), parent=self)
             self.refresh()
 
 

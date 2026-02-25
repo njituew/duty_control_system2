@@ -6,7 +6,7 @@ from datetime import datetime
 from tkinter import messagebox
 
 from config import C, EVENT_COLORS
-from database import Database
+from database import Database, DatabaseError, NotFoundError
 
 
 def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int = 11):
@@ -265,7 +265,11 @@ class EntityTable(tk.Frame):
             return
 
         new_status = "departed" if row["status"] == "arrived" else "arrived"
-        self.db.update_status_and_log(self.entity_type, eid, row["name"], new_status)
+        try:
+            self.db.update_status_and_log(self.entity_type, eid, row["name"], new_status)
+        except DatabaseError as e:
+            messagebox.showerror("Ошибка", str(e))
+            return
 
         row["status"] = new_status
         icon, _, label = self._STATUS_DISPLAY[new_status]
@@ -285,10 +289,14 @@ class EntityTable(tk.Frame):
         if not messagebox.askyesno("Удаление", f"Удалить «{row['name']}»?"):
             return
 
-        if self.entity_type == "vehicle":
-            self.db.delete_vehicle(eid)
-        else:
-            self.db.delete_commander(eid)
+        try:
+            if self.entity_type == "vehicle":
+                self.db.delete_vehicle(eid)
+            else:
+                self.db.delete_commander(eid)
+        except (DatabaseError, NotFoundError) as e:
+            messagebox.showerror("Ошибка", str(e))
+            return
 
         self._tree.delete(str(eid))
         del self._rows[eid]
