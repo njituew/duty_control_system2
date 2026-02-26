@@ -117,7 +117,7 @@ class EntityTab(ctk.CTkFrame):
     def _on_add(self):
         dialog = InputDialog(self, title="Добавить", prompt=self.add_prompt)
         text = dialog.get_input()
-        if not text:
+        if text is None:
             return
 
         try:

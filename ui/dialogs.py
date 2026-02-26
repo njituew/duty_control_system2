@@ -10,7 +10,7 @@ class InputDialog(ctk.CTkToplevel):
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
         self.title(title)
-        self.geometry("380x160")
+        self.geometry("380x190")
         self.resizable(False, False)
         self.configure(fg_color=C["surface"])
         self.grab_set()
@@ -36,8 +36,16 @@ class InputDialog(ctk.CTkToplevel):
         self._entry.bind("<Return>", self._confirm)
         self.after(50, self._set_focus)
 
+        self._error_lbl = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color=C["red"],
+        )
+        self._error_lbl.pack(pady=(4, 0), padx=24, anchor="w")
+
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.pack(fill="x", padx=24, pady=14)
+        btn_frame.pack(fill="x", padx=24, pady=10)
 
         ctk.CTkButton(
             btn_frame,
@@ -68,7 +76,13 @@ class InputDialog(ctk.CTkToplevel):
         self._entry.focus_set()
 
     def _confirm(self, _=None):
-        self._result = self._entry.get().strip()
+        text = self._entry.get().strip()
+        if not text:
+            self._error_lbl.configure(text="Поле не может быть пустым.")
+            self._entry.configure(border_color=C["red"])
+            self._entry.focus_set()
+            return
+        self._result = text
         self.destroy()
 
     def get_input(self) -> str | None:
