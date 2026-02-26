@@ -207,6 +207,7 @@ class EntityTable(tk.Frame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
+        self._tree.bind("<Button-1>", self._on_press)
         self._tree.bind("<ButtonRelease-1>", self._on_click)
         self._tree.bind(
             "<<TreeviewSelect>>",
@@ -214,6 +215,7 @@ class EntityTable(tk.Frame):
         )
         self._tree.bind("<Motion>", self._on_motion)
         self._hovered_iid: str = ""
+        self._press_iid: str = ""
 
     def populate(self, rows):
         """Заполняет таблицу данными."""
@@ -241,12 +243,19 @@ class EntityTable(tk.Frame):
             )
             self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
 
-    def _on_click(self, event):
-        if self._tree.identify_region(event.x, event.y) != "cell":
-            return
+    def _on_press(self, event):
+        """Запоминает строку на которой было нажатие."""
+        self._press_iid = self._tree.identify_row(event.y)
 
+    def _on_click(self, event):
         iid = self._tree.identify_row(event.y)
-        if not iid:
+
+        if not iid or iid != self._press_iid:
+            self._press_iid = ""
+            return
+        self._press_iid = ""
+
+        if self._tree.identify_region(event.x, event.y) != "cell":
             return
 
         col_id = self._tree.identify_column(event.x)
@@ -266,7 +275,9 @@ class EntityTable(tk.Frame):
 
         new_status = "departed" if row["status"] == "arrived" else "arrived"
         try:
-            self.db.update_status_and_log(self.entity_type, eid, row["name"], new_status)
+            self.db.update_status_and_log(
+                self.entity_type, eid, row["name"], new_status
+            )
         except DatabaseError as e:
             messagebox.showerror("Ошибка", str(e))
             return

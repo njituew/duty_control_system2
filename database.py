@@ -250,7 +250,9 @@ class Database:
 
     # ─────────────────────────────── События ──────────────────────────
 
-    def _log(self, entity_type: str, entity_id: int, entity_name: str, event_type: str) -> None:
+    def _log(
+        self, entity_type: str, entity_id: int, entity_name: str, event_type: str
+    ) -> None:
         """Записывает событие в таблицу events."""
         self.conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
@@ -300,6 +302,7 @@ class Database:
             DatabaseError: при ошибке БД.
         """
         try:
+
             def scalar(sql: str) -> int:
                 return self.conn.execute(sql).fetchone()[0]
 
