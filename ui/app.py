@@ -28,7 +28,7 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
-        self._maximize_window()
+        self.after(0, self._maximize_window)
 
     def _maximize_window(self):
         """Разворачивает окно на весь экран с учётом платформы."""
