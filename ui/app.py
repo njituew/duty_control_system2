@@ -1,6 +1,8 @@
 """Главное окно приложения."""
 
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import customtkinter as ctk
 
@@ -25,10 +27,23 @@ class App(ctk.CTk):
         self.geometry("1500x800")
         self.minsize(900, 600)
         self.configure(fg_color=C["bg"])
+        self._set_icon()
 
         self.db = Database()
         self._build()
         self.after(0, self._maximize_window)
+
+    def _set_icon(self):
+        """Устанавливает иконку окна."""
+        if getattr(sys, "frozen", False):
+            # Режим PyInstaller: файлы лежат рядом с .exe
+            base = Path(sys._MEIPASS)
+        else:
+            # Режим разработки: ищем относительно этого файла
+            base = Path(__file__).parent.parent
+        icon_path = base / "icon.ico"
+        if icon_path.exists():
+            self.iconbitmap(str(icon_path))
 
     def _maximize_window(self):
         """Разворачивает окно на весь экран с учётом платформы."""

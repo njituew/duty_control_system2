@@ -18,7 +18,7 @@ a = Analysis(
 
     binaries=[],
 
-    datas=ct_datas,
+    datas=ct_datas + [(str(PROJECT_ROOT / "icon.ico"), ".")],
 
     hiddenimports=[
         "tkinter",
