@@ -115,6 +115,15 @@ class EventTreeview(tk.Frame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
+    @staticmethod
+    def _fmt_ts(ts: str) -> str:
+        """Конвертирует ISO-метку времени в формат ЧЧ:ММ ДД.ММ.ГГГГ."""
+        try:
+            dt = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
+            return dt.strftime("%H:%M %d.%m.%Y")
+        except (ValueError, TypeError):
+            return ts
+
     def populate(self, rows):
         """Заполняет таблицу списком событий из БД."""
         from config import TYPE_LABELS, EVENT_LABELS
@@ -126,7 +135,7 @@ class EventTreeview(tk.Frame):
                 "",
                 "end",
                 values=(
-                    ev["ts"],
+                    self._fmt_ts(ev["ts"]),
                     TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
                     ev["entity_name"],
                     EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
@@ -227,7 +236,12 @@ class EntityTable(tk.Frame):
             eid = row_dict["id"]
             name = row_dict.get("number") or row_dict.get("name", "")
             status = row_dict.get("status", "idle")
-            ts = row_dict.get("updated", row_dict.get("created", ""))[:16]
+            raw_ts = row_dict.get("updated", row_dict.get("created", ""))
+            try:
+                dt = datetime.strptime(raw_ts[:16], "%Y-%m-%d %H:%M")
+                ts = dt.strftime("%H:%M %d.%m.%Y")
+            except (ValueError, TypeError):
+                ts = raw_ts[:16]
 
             icon, _, label = self._STATUS_DISPLAY.get(
                 status, self._STATUS_DISPLAY["idle"]
@@ -284,7 +298,7 @@ class EntityTable(tk.Frame):
 
         row["status"] = new_status
         icon, _, label = self._STATUS_DISPLAY[new_status]
-        ts_short = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ts_short = datetime.now().strftime("%H:%M %d.%m.%Y")
 
         self._tree.item(
             str(eid),
