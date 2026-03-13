@@ -57,10 +57,21 @@ class EntityTab(ctk.CTkFrame):
             text_color=C["text"],
         ).grid(row=0, column=0, sticky="w", padx=(0, 16))
 
+        search_frame = ctk.CTkFrame(toolbar, fg_color="transparent")
+        search_frame.grid(row=0, column=1, sticky="ew", padx=(0, 12))
+        search_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            search_frame,
+            text="Поиск",
+            font=ctk.CTkFont(size=12),
+            text_color=C["subtext"],
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
+
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
-            toolbar,
+            search_frame,
             textvariable=self._search_var,
             placeholder_text=f"🔍  {search_placeholder}",
             font=ctk.CTkFont(size=12),
@@ -68,7 +79,7 @@ class EntityTab(ctk.CTkFrame):
             border_color=C["border"],
             height=34,
             corner_radius=8,
-        ).grid(row=0, column=1, sticky="ew", padx=(0, 12))
+        ).grid(row=0, column=1, sticky="ew")
 
         ctk.CTkButton(
             toolbar,
