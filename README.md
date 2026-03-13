@@ -2,19 +2,16 @@
 
 # Сборка приложения на Windows
 
-## Сборка (.spec файл)
-
-Окружение:
+## Окружение:
 
 ```bash
 python -m venv venv
-source venv/bin/activate    # macOS / Linux
-venv\Scripts\activate       # Windows (cmd/PowerShell)
+venv\Scripts\activate
 pip install -r requirements.txt
 pip install pyinstaller
 ```
 
-Сборка:
+## Сборка (.spec файл)
 
 ```bash
 pyinstaller raskhod.spec
@@ -23,5 +20,5 @@ pyinstaller raskhod.spec
 ## Сборка в 1 файл (не рекомендуется)
 
 ```bash
-pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
+pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data "venv\Lib\site-packages\customtkinter;customtkinter" main.py
 ```
