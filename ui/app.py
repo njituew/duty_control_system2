@@ -31,11 +31,25 @@ class App(ctk.CTk):
         self._maximize_window()
 
     def _maximize_window(self):
-        """Разворачивает окно на весь экран."""
+        """Разворачивает окно на весь экран с учётом платформы."""
+        import sys
         self.update_idletasks()
-        w = self.winfo_screenwidth()
-        h = self.winfo_screenheight()
-        self.geometry(f"{w}x{h}+0+0")
+        if sys.platform == "win32":
+            # Windows: настоящий maximized-state (как кнопка □)
+            self.state("zoomed")
+        elif sys.platform == "darwin":
+            # macOS: растянуть на весь экран без перехода в отдельный Space
+            w = self.winfo_screenwidth()
+            h = self.winfo_screenheight()
+            self.geometry(f"{w}x{h}+0+0")
+        else:
+            # Linux и прочие: попытаться zoomed, иначе ручной размер
+            try:
+                self.state("zoomed")
+            except Exception:
+                w = self.winfo_screenwidth()
+                h = self.winfo_screenheight()
+                self.geometry(f"{w}x{h}+0+0")
 
     def _build(self):
         self.grid_rowconfigure(1, weight=1)
