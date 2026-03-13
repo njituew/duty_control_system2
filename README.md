@@ -20,7 +20,7 @@ pip install pyinstaller
 pyinstaller raskhod.spec
 ```
 
-## Старая команда (не рекомендуется)
+## Сборка в 1 файл (не рекомендуется)
 
 ```bash
 pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
