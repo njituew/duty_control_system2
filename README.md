@@ -2,13 +2,26 @@
 
 # Сборка приложения на Windows
 
-Установка pyinstaller:
+## Сборка (.spec файл)
+
+Окружение:
+
 ```bash
+python -m venv venv
+source venv/bin/activate    # macOS / Linux
+venv\Scripts\activate       # Windows (cmd/PowerShell)
+pip install -r requirements.txt
 pip install pyinstaller
 ```
 
-Команда для сборки приложения на Windows:
+Сборка:
+
+```bash
+pyinstaller raskhod.spec
+```
+
+## Старая команда (не рекомендуется)
+
 ```bash
 pyinstaller --onefile --windowed --name "Расход" --icon "icon.ico" --add-data ".venv\Lib\site-packages\customtkinter;customtkinter" main.py
 ```
-(случай, когда окружение в папке `.venv`)
