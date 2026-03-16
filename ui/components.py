@@ -1,4 +1,4 @@
-"""UI-компоненты"""
+"""Reusable UI components: EntityTable and EventTreeview."""
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -9,8 +9,16 @@ from config import C, EVENT_COLORS
 from database import Database, DatabaseError, NotFoundError
 
 
-def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int = 11):
-    """Применяет тёмную тему к ttk.Treeview с заданным именем стиля"""
+def apply_treeview_style(
+    style_name: str, row_height: int = 38, font_size: int = 11
+) -> None:
+    """Configure a dark ttk.Treeview style under the given name prefix.
+
+    Args:
+        style_name: Prefix used to namespace the style, e.g. 'Entity'.
+        row_height: Height of each data row in pixels.
+        font_size: Font size for cell text.
+    """
     style = ttk.Style()
     style.theme_use("default")
     style.configure(
@@ -46,6 +54,8 @@ def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int =
 
 
 class EventTreeview(tk.Frame):
+    """Read-only table for displaying event log entries."""
+
     _COLUMNS = ("ts", "type", "name", "event")
     _HEADERS = {
         "ts": "Время",
@@ -55,6 +65,7 @@ class EventTreeview(tk.Frame):
     }
     _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
+    # Unique counter used to avoid ttk style name collisions across instances.
     _instance_count = 0
 
     def __init__(
@@ -70,7 +81,7 @@ class EventTreeview(tk.Frame):
 
         self._build(heading_color, row_height)
 
-    def _build(self, heading_color: str, row_height: int):
+    def _build(self, heading_color: str, row_height: int) -> None:
         apply_treeview_style(self._style_name, row_height=row_height, font_size=10)
 
         ttk.Style().configure(
@@ -107,15 +118,19 @@ class EventTreeview(tk.Frame):
 
     @staticmethod
     def _fmt_ts(ts: str) -> str:
-        """Конвертирует ISO-метку времени в формат ЧЧ:ММ ДД.ММ.ГГГГ"""
+        """Convert an ISO timestamp to the display format 'HH:MM DD.MM.YYYY'."""
         try:
             dt = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
             return dt.strftime("%H:%M %d.%m.%Y")
         except (ValueError, TypeError):
             return ts
 
-    def populate(self, rows):
-        """Заполняет таблицу списком событий из БД."""
+    def populate(self, rows) -> None:
+        """Replace all rows with the given event records.
+
+        Args:
+            rows: Iterable of sqlite3.Row objects from the events table.
+        """
         from config import TYPE_LABELS, EVENT_LABELS
 
         self._tree.delete(*self._tree.get_children())
@@ -135,7 +150,7 @@ class EventTreeview(tk.Frame):
 
 
 class EntityTable(tk.Frame):
-    """Таблица ТС и командиров"""
+    """Interactive table for vehicles or commanders with inline status toggling."""
 
     _COLUMNS = ("icon", "name", "status", "changed", "del")
     _HEADERS = {
@@ -166,7 +181,7 @@ class EntityTable(tk.Frame):
         apply_treeview_style("Entity")
         self._build()
 
-    def _build(self):
+    def _build(self) -> None:
         container = tk.Frame(self, bg=C["surface"], bd=0, highlightthickness=0)
         container.grid(row=0, column=0, sticky="nsew")
         container.grid_rowconfigure(0, weight=1)
@@ -216,8 +231,12 @@ class EntityTable(tk.Frame):
         self._hovered_iid: str = ""
         self._press_iid: str = ""
 
-    def populate(self, rows):
-        """Заполняет таблицу данными"""
+    def populate(self, rows) -> None:
+        """Replace all rows with the given entity records.
+
+        Args:
+            rows: Iterable of sqlite3.Row objects from vehicles or commanders.
+        """
         self._rows.clear()
         self._tree.delete(*self._tree.get_children())
 
@@ -247,13 +266,15 @@ class EntityTable(tk.Frame):
             )
             self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
 
-    def _on_press(self, event):
-        """Запоминает строку на которой было нажатие"""
+    def _on_press(self, event) -> None:
+        """Record which row received the mouse-down event."""
         self._press_iid = self._tree.identify_row(event.y)
 
-    def _on_click(self, event):
+    def _on_click(self, event) -> None:
+        """Handle a complete click: toggle status or delete depending on column."""
         iid = self._tree.identify_row(event.y)
 
+        # Only act if the release happened on the same row as the press.
         if not iid or iid != self._press_iid:
             self._press_iid = ""
             return
@@ -271,8 +292,12 @@ class EntityTable(tk.Frame):
         else:
             self._toggle_status(eid)
 
-    def _toggle_status(self, eid: int):
-        """Переключает статус: arrived ↔ departed"""
+    def _toggle_status(self, eid: int) -> None:
+        """Flip the entity between 'arrived' and 'departed' and update the row.
+
+        Args:
+            eid: Primary key of the entity to update.
+        """
         row = self._rows.get(eid)
         if not row:
             return
@@ -296,7 +321,12 @@ class EntityTable(tk.Frame):
             tags=(new_status, row["zebra"]),
         )
 
-    def _delete_row(self, eid: int):
+    def _delete_row(self, eid: int) -> None:
+        """Ask for confirmation and delete the entity from the database.
+
+        Args:
+            eid: Primary key of the entity to delete.
+        """
         row = self._rows.get(eid)
         if not row:
             return
@@ -317,12 +347,13 @@ class EntityTable(tk.Frame):
         del self._rows[eid]
         self._on_changed()
 
-    def _on_motion(self, event):
-        """Меняет курсор при наведении на строку"""
+    def _on_motion(self, event) -> None:
+        """Switch to a pointer cursor when hovering over a row."""
         iid = self._tree.identify_row(event.y)
         if iid != self._hovered_iid:
             self._hovered_iid = iid
             self._tree.configure(cursor="hand2" if iid else "")
 
     def row_count(self) -> int:
+        """Return the number of currently displayed rows."""
         return len(self._rows)

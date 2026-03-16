@@ -1,4 +1,4 @@
-"""Конфигурация приложения: цвета, статусы, маппинги."""
+"""Application configuration: colors, statuses, and label mappings."""
 
 import os
 import sys
@@ -9,7 +9,11 @@ ctk.set_default_color_theme("dark-blue")
 
 
 def _get_db_path() -> str:
-    """Путь к БД: рядом с .exe или рядом с main.py."""
+    """Return the absolute path to the SQLite database file.
+
+    When running as a PyInstaller bundle the database is placed next to the
+    executable; during development it is placed next to this source file.
+    """
     if getattr(sys, "frozen", False):
         base = os.path.dirname(sys.executable)
     else:
@@ -19,7 +23,7 @@ def _get_db_path() -> str:
 
 DB_PATH = _get_db_path()
 
-# Цветовая палитра
+# Color palette used throughout the UI.
 C: dict[str, str] = {
     "bg": "#0f1117",
     "surface": "#1a1d27",
@@ -37,13 +41,14 @@ C: dict[str, str] = {
     "departed": "#f75f5f",
 }
 
-# Маппинги статусов и событий
+# Maps each status key to (bullet symbol, hex color, human-readable label).
 STATUS_MAP: dict[str, tuple[str, str, str]] = {
     "idle": ("●", C["idle"], "В ожидании"),
     "arrived": ("▲", C["arrived"], "Прибыл"),
     "departed": ("▼", C["departed"], "Убыл"),
 }
 
+# Human-readable labels for event types logged in the database.
 EVENT_LABELS: dict[str, str] = {
     "arrived": "Прибыл",
     "departed": "Убыл",
@@ -51,11 +56,13 @@ EVENT_LABELS: dict[str, str] = {
     "deleted": "Удалён",
 }
 
+# Human-readable labels for entity types.
 TYPE_LABELS: dict[str, str] = {
     "vehicle": "ТС",
     "commander": "Командир",
 }
 
+# Colors used to highlight event rows in the history view.
 EVENT_COLORS: dict[str, str] = {
     "arrived": C["arrived"],
     "departed": C["departed"],
@@ -63,5 +70,5 @@ EVENT_COLORS: dict[str, str] = {
     "deleted": C["red"],
 }
 
-# Порядок переключения статусов
+# Cyclic order for toggling entity statuses.
 STATUS_ORDER: list[str] = ["idle", "arrived", "departed"]

@@ -1,4 +1,4 @@
-"""Работа с базой данных SQLite."""
+"""SQLite database access layer."""
 
 import logging
 import sqlite3
@@ -9,33 +9,35 @@ from config import DB_PATH
 logger = logging.getLogger(__name__)
 
 
-# ──────────────────────────── Исключения ────────────────────────────
+# ─────────────────────────── Exceptions ────────────────────────────
 
 
 class DatabaseError(Exception):
-    """Базовая ошибка слоя БД"""
+    """Base exception for all database-layer errors."""
 
 
 class DuplicateError(DatabaseError):
-    """Запись с таким именем/номером уже существует"""
+    """Raised when a record with the same name or number already exists."""
 
 
 class NotFoundError(DatabaseError):
-    """Запись не найдена"""
+    """Raised when a requested record does not exist."""
 
 
-# ──────────────────────────── Утилиты ───────────────────────────────
+# ─────────────────────────── Helpers ───────────────────────────────
 
 
 def _now() -> str:
-    """Текущая метка времени в формате ISO"""
+    """Return the current timestamp as an ISO-formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ──────────────────────────── Класс БД ──────────────────────────────
+# ─────────────────────────── Database ──────────────────────────────
 
 
 class Database:
+    """Thin wrapper around a SQLite connection for this application."""
+
     def __init__(self, path: str = DB_PATH):
         try:
             self.conn = sqlite3.connect(path, check_same_thread=False)
@@ -45,12 +47,12 @@ class Database:
             self.conn.execute("PRAGMA foreign_keys=ON")
             self._migrate()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Не удалось открыть базу данных «{path}»: {e}") from e
+            raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
-    # ──────────────────────────── Миграции ────────────────────────────
+    # ─────────────────────────── Schema ────────────────────────────
 
-    def _migrate(self):
-        """Создаёт таблицы при первом запуске"""
+    def _migrate(self) -> None:
+        """Create tables on first run if they do not already exist."""
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -77,19 +79,25 @@ class Database:
         )
         self.conn.commit()
 
-    # ─────────────────────── Транспортные средства ────────────────────
+    # ─────────────────────────── Vehicles ──────────────────────────
 
     def add_vehicle(self, number: str) -> int:
-        """Добавляет ТС. Возвращает id
+        """Insert a new vehicle and return its generated id.
+
+        Args:
+            number: Registration number of the vehicle.
+
+        Returns:
+            The auto-assigned integer id of the new row.
 
         Raises:
-            ValueError: если number пустой.
-            DuplicateError: если ТС с таким номером уже существует.
-            DatabaseError: при ошибке БД.
+            ValueError: If number is blank.
+            DuplicateError: If a vehicle with this number already exists.
+            DatabaseError: On any other SQLite error.
         """
         number = number.strip()
         if not number:
-            raise ValueError("Номер ТС не может быть пустым.")
+            raise ValueError("Vehicle number must not be empty.")
         try:
             cur = self.conn.execute(
                 "INSERT INTO vehicles (number, status, created) VALUES (?, 'idle', ?)",
@@ -99,26 +107,29 @@ class Database:
             self._log("vehicle", cur.lastrowid, number, "created")
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            raise DuplicateError(f"ТС «{number}» уже существует.")
+            raise DuplicateError(f"Vehicle '{number}' already exists.")
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при добавлении ТС: {e}") from e
+            raise DatabaseError(f"Failed to add vehicle: {e}") from e
 
     def delete_vehicle(self, vid: int) -> None:
-        """Удаляет ТС по id
+        """Delete a vehicle by id and write a 'deleted' event.
+
+        Args:
+            vid: Primary key of the vehicle to delete.
 
         Raises:
-            NotFoundError: если ТС не найдено.
-            DatabaseError: при ошибке БД.
+            NotFoundError: If no vehicle with this id exists.
+            DatabaseError: On any SQLite error.
         """
         try:
             row = self.conn.execute(
                 "SELECT number FROM vehicles WHERE id = ?", (vid,)
             ).fetchone()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при удалении ТС: {e}") from e
+            raise DatabaseError(f"Failed to delete vehicle: {e}") from e
 
         if not row:
-            raise NotFoundError(f"ТС с id={vid} не найдено.")
+            raise NotFoundError(f"Vehicle id={vid} not found.")
 
         try:
             self.conn.execute(
@@ -130,13 +141,19 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            raise DatabaseError(f"Ошибка при удалении ТС: {e}") from e
+            raise DatabaseError(f"Failed to delete vehicle: {e}") from e
 
     def get_vehicles(self, search: str = "") -> list:
-        """Возвращает список ТС, отфильтрованный по подстроке номера
+        """Return vehicles whose number contains the search substring.
+
+        Args:
+            search: Optional filter string (case-insensitive LIKE match).
+
+        Returns:
+            A list of sqlite3.Row objects ordered by number.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
             return self.conn.execute(
@@ -144,21 +161,27 @@ class Database:
                 (f"%{search.strip()}%",),
             ).fetchall()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при получении списка ТС: {e}") from e
+            raise DatabaseError(f"Failed to fetch vehicles: {e}") from e
 
-    # ───────────────────────────── Командиры ──────────────────────────
+    # ─────────────────────────── Commanders ────────────────────────
 
     def add_commander(self, name: str) -> int:
-        """Добавляет командира. Возвращает id
+        """Insert a new commander and return his generated id.
+
+        Args:
+            name: Full name of the commander.
+
+        Returns:
+            The auto-assigned integer id of the new row.
 
         Raises:
-            ValueError: если name пустой
-            DuplicateError: если командир с таким именем уже существует
-            DatabaseError: при ошибке БД
+            ValueError: If name is blank.
+            DuplicateError: If a commander with this name already exists.
+            DatabaseError: On any other SQLite error.
         """
         name = name.strip()
         if not name:
-            raise ValueError("ФИО командира не может быть пустым.")
+            raise ValueError("Commander name must not be empty.")
         try:
             cur = self.conn.execute(
                 "INSERT INTO commanders (name, status, created) VALUES (?, 'idle', ?)",
@@ -168,26 +191,29 @@ class Database:
             self._log("commander", cur.lastrowid, name, "created")
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            raise DuplicateError(f"Командир «{name}» уже существует.")
+            raise DuplicateError(f"Commander '{name}' already exists.")
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при добавлении командира: {e}") from e
+            raise DatabaseError(f"Failed to add commander: {e}") from e
 
     def delete_commander(self, cid: int) -> None:
-        """Удаляет командира по id
+        """Delete a commander by id and write a 'deleted' event.
+
+        Args:
+            cid: Primary key of the commander to delete.
 
         Raises:
-            NotFoundError: если командир не найден
-            DatabaseError: при ошибке БД
+            NotFoundError: If no commander with this id exists.
+            DatabaseError: On any SQLite error.
         """
         try:
             row = self.conn.execute(
                 "SELECT name FROM commanders WHERE id = ?", (cid,)
             ).fetchone()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при удалении командира: {e}") from e
+            raise DatabaseError(f"Failed to delete commander: {e}") from e
 
         if not row:
-            raise NotFoundError(f"Командир с id={cid} не найден.")
+            raise NotFoundError(f"Commander id={cid} not found.")
 
         try:
             self.conn.execute(
@@ -199,13 +225,19 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            raise DatabaseError(f"Ошибка при удалении командира: {e}") from e
+            raise DatabaseError(f"Failed to delete commander: {e}") from e
 
     def get_commanders(self, search: str = "") -> list:
-        """Возвращает список командиров, отфильтрованный по подстроке ФИО
+        """Return commanders whose name contains the search substring.
+
+        Args:
+            search: Optional filter string (case-insensitive LIKE match).
+
+        Returns:
+            A list of sqlite3.Row objects ordered by name.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
             return self.conn.execute(
@@ -213,25 +245,31 @@ class Database:
                 (f"%{search.strip()}%",),
             ).fetchall()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при получении списка командиров: {e}") from e
+            raise DatabaseError(f"Failed to fetch commanders: {e}") from e
 
-    # ─────────────────────────────── Статусы ──────────────────────────
+    # ─────────────────────────── Statuses ──────────────────────────
 
     def update_status_and_log(
         self, entity_type: str, entity_id: int, entity_name: str, status: str
     ) -> None:
-        """Обновляет статус и записывает событие в одной транзакции
+        """Update an entity's status and append the event in one transaction.
+
+        Args:
+            entity_type: Either 'vehicle' or 'commander'.
+            entity_id: Primary key of the entity.
+            entity_name: Display name used in the event log.
+            status: New status — one of 'idle', 'arrived', 'departed'.
 
         Raises:
-            ValueError: если entity_type или status некорректны
-            DatabaseError: при ошибке БД
+            ValueError: If entity_type or status is not a recognized value.
+            DatabaseError: On any SQLite error.
         """
         valid_types = {"vehicle", "commander"}
         valid_statuses = {"idle", "arrived", "departed"}
         if entity_type not in valid_types:
-            raise ValueError(f"Неизвестный тип сущности: {entity_type!r}")
+            raise ValueError(f"Unknown entity type: {entity_type!r}")
         if status not in valid_statuses:
-            raise ValueError(f"Неизвестный статус: {status!r}")
+            raise ValueError(f"Unknown status: {status!r}")
 
         table = "vehicles" if entity_type == "vehicle" else "commanders"
         try:
@@ -246,14 +284,15 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            raise DatabaseError(f"Ошибка при обновлении статуса: {e}") from e
+            raise DatabaseError(f"Failed to update status: {e}") from e
 
-    # ─────────────────────────────── События ──────────────────────────
+    # ─────────────────────────── Events ────────────────────────────
 
     def _log(
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ) -> None:
-        """Записывает событие в таблицу events"""
+        # Internal helper — writes a single event row without committing.
+        # Callers are responsible for calling conn.commit() afterwards.
         self.conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -262,10 +301,18 @@ class Database:
         self.conn.commit()
 
     def get_events(self, search: str = "", limit: int = 300) -> list:
-        """Возвращает события, отфильтрованные по подстроке, в порядке убывания
+        """Return events filtered by a search string, newest first.
+
+        Args:
+            search: Optional substring matched against entity name, event type,
+                and entity type.
+            limit: Maximum number of rows to return.
+
+        Returns:
+            A list of sqlite3.Row objects.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
             q = f"%{search.strip()}%"
@@ -279,27 +326,31 @@ class Database:
                 (q, q, q, limit),
             ).fetchall()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при получении событий: {e}") from e
+            raise DatabaseError(f"Failed to fetch events: {e}") from e
 
     def clear_events(self) -> None:
-        """Удаляет всю историю событий
+        """Delete all event history.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
             self.conn.execute("DELETE FROM events")
             self.conn.commit()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при очистке истории: {e}") from e
+            raise DatabaseError(f"Failed to clear events: {e}") from e
 
-    # ───────────────────────────── Статистика ─────────────────────────
+    # ─────────────────────────── Statistics ────────────────────────
 
     def stats(self) -> dict:
-        """Возвращает сводную статистику по базе
+        """Return aggregate counts for the dashboard.
+
+        Returns:
+            A dict with keys: vehicles, commanders, arrivals, departures,
+            total_events.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
 
@@ -318,17 +369,23 @@ class Database:
                 "total_events": scalar("SELECT COUNT(*) FROM events"),
             }
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при получении статистики: {e}") from e
+            raise DatabaseError(f"Failed to fetch statistics: {e}") from e
 
     def recent_activity(self, limit: int = 5) -> list:
-        """Возвращает последние события
+        """Return the most recent events.
+
+        Args:
+            limit: Maximum number of events to return.
+
+        Returns:
+            A list of sqlite3.Row objects, newest first.
 
         Raises:
-            DatabaseError: при ошибке БД
+            DatabaseError: On any SQLite error.
         """
         try:
             return self.conn.execute(
                 "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Ошибка при получении последних событий: {e}") from e
+            raise DatabaseError(f"Failed to fetch recent activity: {e}") from e

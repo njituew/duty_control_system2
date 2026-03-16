@@ -1,11 +1,11 @@
-"""Модальные диалоги"""
+"""Modal input dialog."""
 
 import customtkinter as ctk
 from config import C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """Модальный диалог ввода текста"""
+    """A modal dialog that collects a single line of text from the user."""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
@@ -19,7 +19,7 @@ class InputDialog(ctk.CTkToplevel):
         self._build(prompt)
         self.wait_window()
 
-    def _build(self, prompt: str):
+    def _build(self, prompt: str) -> None:
         ctk.CTkLabel(
             self, text=prompt, font=ctk.CTkFont(size=13), text_color=C["text"]
         ).pack(pady=(20, 8), padx=24, anchor="w")
@@ -70,12 +70,14 @@ class InputDialog(ctk.CTkToplevel):
             command=self.destroy,
         ).pack(side="left", expand=True, fill="x")
 
-    def _set_focus(self):
+    def _set_focus(self) -> None:
+        """Bring the dialog to the front and focus the entry field."""
         self.lift()
         self.focus_force()
         self._entry.focus_set()
 
-    def _confirm(self, _=None):
+    def _confirm(self, _=None) -> None:
+        """Validate the entry and close the dialog, storing the result."""
         text = self._entry.get().strip()
         if not text:
             self._error_lbl.configure(text="Поле не может быть пустым.")
@@ -86,4 +88,5 @@ class InputDialog(ctk.CTkToplevel):
         self.destroy()
 
     def get_input(self) -> str | None:
+        """Return the confirmed input, or None if the dialog was cancelled."""
         return self._result

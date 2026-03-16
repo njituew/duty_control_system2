@@ -1,3 +1,5 @@
+"""Application entry point."""
+
 from ui.app import App
 
 
