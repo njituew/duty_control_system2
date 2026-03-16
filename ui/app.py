@@ -48,6 +48,7 @@ class App(ctk.CTk):
     def _maximize_window(self):
         """Разворачивает окно на весь экран с учётом платформы."""
         import sys
+
         self.update_idletasks()
         if sys.platform == "win32":
             # Windows: настоящий maximized-state (как кнопка □)
