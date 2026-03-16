@@ -1,4 +1,4 @@
-"""Вкладки: EntityTab, HistoryTab, StatsTab."""
+"""Вкладки: EntityTab, HistoryTab, StatsTab"""
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -10,7 +10,7 @@ from ui.dialogs import InputDialog
 
 
 class EntityTab(ctk.CTkFrame):
-    """Вкладка списка ТС или командиров."""
+    """Вкладка списка ТС или командиров"""
 
     def __init__(
         self,
@@ -145,7 +145,7 @@ class EntityTab(ctk.CTkFrame):
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Вкладка истории событий."""
+    """Вкладка истории событий"""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -233,7 +233,7 @@ class HistoryTab(ctk.CTkFrame):
 
 
 class StatsTab(ctk.CTkFrame):
-    """Вкладка статистики."""
+    """Вкладка статистики"""
 
     _STAT_CARDS = [
         ("ТС", "vehicles", "accent"),

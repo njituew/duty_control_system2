@@ -1,4 +1,4 @@
-"""Главное окно приложения."""
+"""Главное окно приложения"""
 
 import sys
 from datetime import datetime
@@ -12,7 +12,7 @@ from ui.tabs import EntityTab, HistoryTab, StatsTab
 
 
 class App(ctk.CTk):
-    """Корневое окно приложения."""
+    """Корневое окно приложения"""
 
     _NAV_ITEMS = [
         ("vehicles", "🚗", "ТС"),
@@ -34,7 +34,7 @@ class App(ctk.CTk):
         self.after(0, self._maximize_window)
 
     def _set_icon(self):
-        """Устанавливает иконку окна."""
+        """Устанавливает иконку окна"""
         if getattr(sys, "frozen", False):
             # Режим PyInstaller: файлы лежат рядом с .exe
             base = Path(sys._MEIPASS)
@@ -46,20 +46,17 @@ class App(ctk.CTk):
             self.iconbitmap(str(icon_path))
 
     def _maximize_window(self):
-        """Разворачивает окно на весь экран с учётом платформы."""
+        """Разворачивает окно на весь экран с учётом платформы"""
         import sys
 
         self.update_idletasks()
         if sys.platform == "win32":
-            # Windows: настоящий maximized-state (как кнопка □)
             self.state("zoomed")
         elif sys.platform == "darwin":
-            # macOS: растянуть на весь экран без перехода в отдельный Space
             w = self.winfo_screenwidth()
             h = self.winfo_screenheight()
             self.geometry(f"{w}x{h}+0+0")
         else:
-            # Linux и прочие: попытаться zoomed, иначе ручной размер
             try:
                 self.state("zoomed")
             except Exception:

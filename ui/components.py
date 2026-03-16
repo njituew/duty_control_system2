@@ -1,4 +1,4 @@
-"""UI-компоненты: EntityTable, EventTreeview."""
+"""UI-компоненты"""
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -10,7 +10,7 @@ from database import Database, DatabaseError, NotFoundError
 
 
 def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int = 11):
-    """Применяет тёмную тему к ttk.Treeview с заданным именем стиля."""
+    """Применяет тёмную тему к ttk.Treeview с заданным именем стиля"""
     style = ttk.Style()
     style.theme_use("default")
     style.configure(
@@ -46,15 +46,6 @@ def apply_treeview_style(style_name: str, row_height: int = 38, font_size: int =
 
 
 class EventTreeview(tk.Frame):
-    """
-    Переиспользуемый виджет таблицы событий (история, статистика).
-
-    Параметры
-    ---------
-    heading_color : цвет заголовков (по умолчанию subtext, для истории — accent)
-    row_height    : высота строки
-    """
-
     _COLUMNS = ("ts", "type", "name", "event")
     _HEADERS = {
         "ts": "Время",
@@ -64,7 +55,7 @@ class EventTreeview(tk.Frame):
     }
     _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
-    _instance_count = 0  # для уникальных имён стилей ttk
+    _instance_count = 0
 
     def __init__(
         self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
@@ -82,7 +73,6 @@ class EventTreeview(tk.Frame):
     def _build(self, heading_color: str, row_height: int):
         apply_treeview_style(self._style_name, row_height=row_height, font_size=10)
 
-        # Переопределяем цвет заголовков после базового стиля
         ttk.Style().configure(
             f"{self._style_name}.Treeview.Heading",
             foreground=heading_color,
@@ -117,7 +107,7 @@ class EventTreeview(tk.Frame):
 
     @staticmethod
     def _fmt_ts(ts: str) -> str:
-        """Конвертирует ISO-метку времени в формат ЧЧ:ММ ДД.ММ.ГГГГ."""
+        """Конвертирует ISO-метку времени в формат ЧЧ:ММ ДД.ММ.ГГГГ"""
         try:
             dt = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
             return dt.strftime("%H:%M %d.%m.%Y")
@@ -145,7 +135,7 @@ class EventTreeview(tk.Frame):
 
 
 class EntityTable(tk.Frame):
-    """Таблица ТС или командиров на базе ttk.Treeview."""
+    """Таблица ТС и командиров"""
 
     _COLUMNS = ("icon", "name", "status", "changed", "del")
     _HEADERS = {
@@ -227,7 +217,7 @@ class EntityTable(tk.Frame):
         self._press_iid: str = ""
 
     def populate(self, rows):
-        """Заполняет таблицу данными."""
+        """Заполняет таблицу данными"""
         self._rows.clear()
         self._tree.delete(*self._tree.get_children())
 
@@ -258,7 +248,7 @@ class EntityTable(tk.Frame):
             self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
 
     def _on_press(self, event):
-        """Запоминает строку на которой было нажатие."""
+        """Запоминает строку на которой было нажатие"""
         self._press_iid = self._tree.identify_row(event.y)
 
     def _on_click(self, event):
@@ -282,7 +272,7 @@ class EntityTable(tk.Frame):
             self._toggle_status(eid)
 
     def _toggle_status(self, eid: int):
-        """Переключает статус: arrived ↔ departed."""
+        """Переключает статус: arrived ↔ departed"""
         row = self._rows.get(eid)
         if not row:
             return
@@ -328,7 +318,7 @@ class EntityTable(tk.Frame):
         self._on_changed()
 
     def _on_motion(self, event):
-        """Меняет курсор при наведении на строку."""
+        """Меняет курсор при наведении на строку"""
         iid = self._tree.identify_row(event.y)
         if iid != self._hovered_iid:
             self._hovered_iid = iid

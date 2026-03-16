@@ -1,11 +1,11 @@
-"""Модальные диалоги."""
+"""Модальные диалоги"""
 
 import customtkinter as ctk
 from config import C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """Модальный диалог ввода текста."""
+    """Модальный диалог ввода текста"""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)

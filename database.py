@@ -13,22 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseError(Exception):
-    """Базовая ошибка слоя БД."""
+    """Базовая ошибка слоя БД"""
 
 
 class DuplicateError(DatabaseError):
-    """Запись с таким именем/номером уже существует."""
+    """Запись с таким именем/номером уже существует"""
 
 
 class NotFoundError(DatabaseError):
-    """Запись не найдена."""
+    """Запись не найдена"""
 
 
 # ──────────────────────────── Утилиты ───────────────────────────────
 
 
 def _now() -> str:
-    """Текущая метка времени в формате ISO."""
+    """Текущая метка времени в формате ISO"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -50,7 +50,7 @@ class Database:
     # ──────────────────────────── Миграции ────────────────────────────
 
     def _migrate(self):
-        """Создаёт таблицы при первом запуске."""
+        """Создаёт таблицы при первом запуске"""
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -80,7 +80,7 @@ class Database:
     # ─────────────────────── Транспортные средства ────────────────────
 
     def add_vehicle(self, number: str) -> int:
-        """Добавляет ТС. Возвращает id.
+        """Добавляет ТС. Возвращает id
 
         Raises:
             ValueError: если number пустой.
@@ -104,7 +104,7 @@ class Database:
             raise DatabaseError(f"Ошибка при добавлении ТС: {e}") from e
 
     def delete_vehicle(self, vid: int) -> None:
-        """Удаляет ТС по id.
+        """Удаляет ТС по id
 
         Raises:
             NotFoundError: если ТС не найдено.
@@ -133,10 +133,10 @@ class Database:
             raise DatabaseError(f"Ошибка при удалении ТС: {e}") from e
 
     def get_vehicles(self, search: str = "") -> list:
-        """Возвращает список ТС, отфильтрованный по подстроке номера.
+        """Возвращает список ТС, отфильтрованный по подстроке номера
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
             return self.conn.execute(
@@ -149,12 +149,12 @@ class Database:
     # ───────────────────────────── Командиры ──────────────────────────
 
     def add_commander(self, name: str) -> int:
-        """Добавляет командира. Возвращает id.
+        """Добавляет командира. Возвращает id
 
         Raises:
-            ValueError: если name пустой.
-            DuplicateError: если командир с таким именем уже существует.
-            DatabaseError: при ошибке БД.
+            ValueError: если name пустой
+            DuplicateError: если командир с таким именем уже существует
+            DatabaseError: при ошибке БД
         """
         name = name.strip()
         if not name:
@@ -173,11 +173,11 @@ class Database:
             raise DatabaseError(f"Ошибка при добавлении командира: {e}") from e
 
     def delete_commander(self, cid: int) -> None:
-        """Удаляет командира по id.
+        """Удаляет командира по id
 
         Raises:
-            NotFoundError: если командир не найден.
-            DatabaseError: при ошибке БД.
+            NotFoundError: если командир не найден
+            DatabaseError: при ошибке БД
         """
         try:
             row = self.conn.execute(
@@ -202,10 +202,10 @@ class Database:
             raise DatabaseError(f"Ошибка при удалении командира: {e}") from e
 
     def get_commanders(self, search: str = "") -> list:
-        """Возвращает список командиров, отфильтрованный по подстроке ФИО.
+        """Возвращает список командиров, отфильтрованный по подстроке ФИО
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
             return self.conn.execute(
@@ -220,11 +220,11 @@ class Database:
     def update_status_and_log(
         self, entity_type: str, entity_id: int, entity_name: str, status: str
     ) -> None:
-        """Обновляет статус и записывает событие в одной транзакции.
+        """Обновляет статус и записывает событие в одной транзакции
 
         Raises:
-            ValueError: если entity_type или status некорректны.
-            DatabaseError: при ошибке БД.
+            ValueError: если entity_type или status некорректны
+            DatabaseError: при ошибке БД
         """
         valid_types = {"vehicle", "commander"}
         valid_statuses = {"idle", "arrived", "departed"}
@@ -253,7 +253,7 @@ class Database:
     def _log(
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ) -> None:
-        """Записывает событие в таблицу events."""
+        """Записывает событие в таблицу events"""
         self.conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -262,10 +262,10 @@ class Database:
         self.conn.commit()
 
     def get_events(self, search: str = "", limit: int = 300) -> list:
-        """Возвращает события, отфильтрованные по подстроке, в порядке убывания.
+        """Возвращает события, отфильтрованные по подстроке, в порядке убывания
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
             q = f"%{search.strip()}%"
@@ -282,10 +282,10 @@ class Database:
             raise DatabaseError(f"Ошибка при получении событий: {e}") from e
 
     def clear_events(self) -> None:
-        """Удаляет всю историю событий.
+        """Удаляет всю историю событий
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
             self.conn.execute("DELETE FROM events")
@@ -296,10 +296,10 @@ class Database:
     # ───────────────────────────── Статистика ─────────────────────────
 
     def stats(self) -> dict:
-        """Возвращает сводную статистику по базе.
+        """Возвращает сводную статистику по базе
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
 
@@ -321,10 +321,10 @@ class Database:
             raise DatabaseError(f"Ошибка при получении статистики: {e}") from e
 
     def recent_activity(self, limit: int = 5) -> list:
-        """Возвращает последние события.
+        """Возвращает последние события
 
         Raises:
-            DatabaseError: при ошибке БД.
+            DatabaseError: при ошибке БД
         """
         try:
             return self.conn.execute(
