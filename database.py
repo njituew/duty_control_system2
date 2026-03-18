@@ -52,7 +52,8 @@ class Database:
     # ─────────────────────────── Schema ────────────────────────────
 
     def _migrate(self) -> None:
-        """Create tables on first run if they do not already exist."""
+        """Create tables on first run if they do not already exist. Add missing columns."""
+        # Create tables
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -79,6 +80,16 @@ class Database:
             );
             """
         )
+
+        # Migrate: add 'updated' column if missing
+        for table, col in [("vehicles", "number"), ("commanders", "name")]:
+            cur = self.conn.execute("PRAGMA table_info({})".format(table))
+            columns = [row[1] for row in cur.fetchall()]
+            if "updated" not in columns:
+                self.conn.execute(
+                    "ALTER TABLE {} ADD COLUMN updated TEXT DEFAULT NULL".format(table)
+                )
+
         self.conn.commit()
 
     # ─────────────────────────── Vehicles ──────────────────────────
@@ -109,7 +120,9 @@ class Database:
             self.conn.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            raise DuplicateError(f"{entity_type.capitalize()} '{value}' already exists.")
+            raise DuplicateError(
+                f"{entity_type.capitalize()} '{value}' already exists."
+            )
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to add {entity_type}: {e}") from e
 
