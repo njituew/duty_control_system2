@@ -13,6 +13,7 @@ from ui.dialogs import InputDialog
 # Accounting (combined ТС + Командование)
 # ---------------------------------------------------------------------------
 
+
 class _EntitySection(ctk.CTkFrame):
     """One half of the AccountingTab: header + search + card grid."""
 
@@ -142,9 +143,11 @@ class AccountingTab(ctk.CTkFrame):
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
         self.grid_columnconfigure(2, weight=1)
 
         self._build()
+        self.refresh()  # initial load
 
     def _build(self) -> None:
         # Left section — ТС
@@ -183,6 +186,7 @@ class AccountingTab(ctk.CTkFrame):
 # ---------------------------------------------------------------------------
 # EntityTab (legacy single-section tab, kept for compatibility)
 # ---------------------------------------------------------------------------
+
 
 class EntityTab(ctk.CTkFrame):
     """Tab that displays and manages a list of vehicles or commanders."""
@@ -322,6 +326,7 @@ class EntityTab(ctk.CTkFrame):
 # HistoryTab
 # ---------------------------------------------------------------------------
 
+
 class HistoryTab(ctk.CTkFrame):
     """Tab that shows the full event log with search and clear controls."""
 
@@ -413,6 +418,7 @@ class HistoryTab(ctk.CTkFrame):
 # ---------------------------------------------------------------------------
 # StatsTab
 # ---------------------------------------------------------------------------
+
 
 class StatsTab(ctk.CTkFrame):
     """Tab that shows aggregate statistics and a recent-activity feed."""

@@ -52,14 +52,15 @@ def apply_treeview_style(
 # EventTreeview
 # ---------------------------------------------------------------------------
 
+
 class EventTreeview(tk.Frame):
     """Read-only table for displaying event log entries."""
 
     _COLUMNS = ("ts", "type", "name", "event")
     _HEADERS = {
-        "ts":    "Время",
-        "type":  "Тип",
-        "name":  "Наименование",
+        "ts": "Время",
+        "type": "Тип",
+        "name": "Наименование",
         "event": "Событие",
     }
     _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
@@ -106,11 +107,13 @@ class EventTreeview(tk.Frame):
 
     def populate(self, rows) -> None:
         from config import TYPE_LABELS, EVENT_LABELS
+
         self._tree.delete(*self._tree.get_children())
         for ev in rows:
             tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
             self._tree.insert(
-                "", "end",
+                "",
+                "end",
                 values=(
                     _fmt_timestamp(ev["ts"]),
                     TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
@@ -124,6 +127,7 @@ class EventTreeview(tk.Frame):
 # ---------------------------------------------------------------------------
 # Shared timestamp formatter
 # ---------------------------------------------------------------------------
+
 
 def _fmt_timestamp(raw: str) -> str:
     """Parse an ISO-ish timestamp and return 'HH:MM DD.MM.YYYY', or '—'."""
@@ -139,27 +143,42 @@ def _fmt_timestamp(raw: str) -> str:
 # ---------------------------------------------------------------------------
 
 _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
-    "idle":     {"bg": "#1e2130", "border": "#2a2d3e", "text": C["text"],    "sub": C["subtext"]},
-    "arrived":  {"bg": "#0d2318", "border": "#3dd68c", "text": C["arrived"], "sub": "#2a9c65"},
-    "departed": {"bg": "#280f0f", "border": "#f75f5f", "text": C["departed"],"sub": "#9c2a2a"},
+    "idle": {
+        "bg": "#1e2130",
+        "border": "#2a2d3e",
+        "text": C["text"],
+        "sub": C["subtext"],
+    },
+    "arrived": {
+        "bg": "#0d2318",
+        "border": "#3dd68c",
+        "text": C["arrived"],
+        "sub": "#2a9c65",
+    },
+    "departed": {
+        "bg": "#280f0f",
+        "border": "#f75f5f",
+        "text": C["departed"],
+        "sub": "#9c2a2a",
+    },
 }
 
 _STATUS_LABEL: dict[str, dict[str, str]] = {
     "vehicle": {
-        "idle":     "В ожидании",
-        "arrived":  "Прибыло в",
+        "idle": "В ожидании",
+        "arrived": "Прибыло в",
         "departed": "Убыло в",
     },
     "commander": {
-        "idle":     "В ожидании",
-        "arrived":  "Прибыл(а) в",
+        "idle": "В ожидании",
+        "arrived": "Прибыл(а) в",
         "departed": "Убыл(а) в",
     },
 }
 
 _CARD_COLS = 3
-_CARD_PAD  = 10
-_CARD_H    = 82   # card height px
+_CARD_PAD = 10
+_CARD_H = 82  # card height px
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +199,7 @@ _CARD_H    = 82   # card height px
 # the pointer, so two grids side-by-side don't steal each other's events.
 #
 
+
 class EntityCardGrid(tk.Frame):
     """Interactive card grid backed by a native-scrolling tk.Canvas.
 
@@ -189,7 +209,7 @@ class EntityCardGrid(tk.Frame):
     """
 
     _font_name: tkfont.Font | None = None
-    _font_sub:  tkfont.Font | None = None
+    _font_sub: tkfont.Font | None = None
     _font_name_sm: tkfont.Font | None = None  # smaller variant for long names
 
     def __init__(
@@ -201,19 +221,19 @@ class EntityCardGrid(tk.Frame):
         **kwargs,
     ):
         super().__init__(master, bg=C["bg"], **kwargs)
-        self.db          = db
+        self.db = db
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
         # eid -> {name, status, ts,
         #         tag_border, tag_bg, tag_name, tag_sub1, tag_sub2}
         self._items: dict[int, dict] = {}
-        self._order: list[int] = []           # sorted display order
+        self._order: list[int] = []  # sorted display order
 
         # idx -> eid mapping built at populate time for O(1) hit-test
         self._idx_to_eid: list[int] = []
 
-        self._canvas_w: int = 0               # last known canvas pixel width
+        self._canvas_w: int = 0  # last known canvas pixel width
         self._hovered_eid: int = -1
 
         self._context_menu: tk.Menu | None = None
@@ -229,18 +249,20 @@ class EntityCardGrid(tk.Frame):
 
     def _init_fonts(self) -> None:
         if EntityCardGrid._font_name is None:
-            EntityCardGrid._font_name   = tkfont.Font(family="Segoe UI", size=11, weight="bold")
-            EntityCardGrid._font_name_sm = tkfont.Font(family="Segoe UI", size=9,  weight="bold")
-            EntityCardGrid._font_sub    = tkfont.Font(family="Segoe UI", size=9)
+            EntityCardGrid._font_name = tkfont.Font(
+                family="Segoe UI", size=11, weight="bold"
+            )
+            EntityCardGrid._font_name_sm = tkfont.Font(
+                family="Segoe UI", size=9, weight="bold"
+            )
+            EntityCardGrid._font_sub = tkfont.Font(family="Segoe UI", size=9)
 
     # ------------------------------------------------------------------
     # Widget construction
     # ------------------------------------------------------------------
 
     def _build(self) -> None:
-        self._canvas = tk.Canvas(
-            self, bg=C["bg"], bd=0, highlightthickness=0
-        )
+        self._canvas = tk.Canvas(self, bg=C["bg"], bd=0, highlightthickness=0)
         vsb = tk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
         self._canvas.configure(yscrollcommand=vsb.set)
 
@@ -248,15 +270,19 @@ class EntityCardGrid(tk.Frame):
         vsb.grid(row=0, column=1, sticky="ns")
 
         self._canvas.bind("<Configure>", self._on_configure)
-        self._canvas.bind("<Button-1>",  self._on_click)
-        self._canvas.bind("<Button-2>",  self._on_right)
-        self._canvas.bind("<Button-3>",  self._on_right)
-        self._canvas.bind("<Motion>",    self._on_motion)
-        self._canvas.bind("<Leave>",     self._on_leave)
+        self._canvas.bind("<Button-1>", self._on_click)
+        self._canvas.bind("<Button-2>", self._on_right)
+        self._canvas.bind("<Button-3>", self._on_right)
+        self._canvas.bind("<Motion>", self._on_motion)
+        self._canvas.bind("<Leave>", self._on_leave)
+        self._canvas.focus_set()
 
         # bind_all so the wheel fires even without keyboard focus
-        self._canvas.bind_all("<MouseWheel>",       self._on_mousewheel)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
         self._canvas.bind_all("<Shift-MouseWheel>", lambda _e: None)
+
+        # Local fallback bind
+        self._canvas.bind("<MouseWheel>", self._on_mousewheel_local)
 
     # ------------------------------------------------------------------
     # Geometry helpers  (pure math, no Tcl round-trips)
@@ -268,11 +294,11 @@ class EntityCardGrid(tk.Frame):
 
     def _card_rect(self, idx: int) -> tuple[int, int, int, int]:
         """Absolute canvas coords (x1,y1,x2,y2) for card at sorted index."""
-        cw  = self._cell_w()
+        cw = self._cell_w()
         col = idx % _CARD_COLS
         row = idx // _CARD_COLS
-        x1  = _CARD_PAD + col * (cw + _CARD_PAD)
-        y1  = _CARD_PAD + row * (_CARD_H + _CARD_PAD)
+        x1 = _CARD_PAD + col * (cw + _CARD_PAD)
+        y1 = _CARD_PAD + row * (_CARD_H + _CARD_PAD)
         return x1, y1, x1 + cw, y1 + _CARD_H
 
     def _total_height(self) -> int:
@@ -315,62 +341,85 @@ class EntityCardGrid(tk.Frame):
 
     def _draw_card(self, idx: int, eid: int) -> None:
         """Create all canvas items for one card. Called once per card at populate."""
-        item   = self._items[eid]
+        item = self._items[eid]
         status = item["status"]
         colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
-        cw     = self._cell_w()
+        cw = self._cell_w()
         x1, y1, x2, y2 = self._card_rect(idx)
-        tag    = self._card_tag(eid)
-        cv     = self._canvas
-        fn     = EntityCardGrid._font_name
-        fs     = EntityCardGrid._font_sub
+        tag = self._card_tag(eid)
+        cv = self._canvas
+        fn = EntityCardGrid._font_name
+        fs = EntityCardGrid._font_sub
 
         # border rectangle
         item["tag_border"] = cv.create_rectangle(
-            x1, y1, x2, y2,
-            fill=colors["border"], outline="", tags=tag,
+            x1,
+            y1,
+            x2,
+            y2,
+            fill=colors["border"],
+            outline="",
+            tags=tag,
         )
         # inner background (1 px inset)
         item["tag_bg"] = cv.create_rectangle(
-            x1+1, y1+1, x2-1, y2-1,
-            fill=colors["bg"], outline="", tags=tag,
+            x1 + 1,
+            y1 + 1,
+            x2 - 1,
+            y2 - 1,
+            fill=colors["bg"],
+            outline="",
+            tags=tag,
         )
         # name text — use smaller font for long names to keep them in the card
         name_font = fn if len(item["name"]) <= 18 else EntityCardGrid._font_name_sm
         item["tag_name"] = cv.create_text(
-            x1+14, y1+20,
+            x1 + 14,
+            y1 + 20,
             text=item["name"],
             fill=colors["text"],
             font=name_font,
             anchor="w",
-            width=cw-28,
+            width=cw - 28,
             tags=tag,
         )
         # status label (line 1 of sub)
-        labels     = _STATUS_LABEL[self.entity_type]
+        labels = _STATUS_LABEL[self.entity_type]
         status_lbl = labels.get(status, "В ожидании")
         if status != "idle":
             item["tag_sub1"] = cv.create_text(
-                x1+14, y1+46,
+                x1 + 14,
+                y1 + 46,
                 text=status_lbl,
-                fill=colors["sub"], font=fs, anchor="w", tags=tag,
+                fill=colors["sub"],
+                font=fs,
+                anchor="w",
+                tags=tag,
             )
             item["tag_sub2"] = cv.create_text(
-                x1+14, y1+62,
+                x1 + 14,
+                y1 + 62,
                 text=item["ts"],
-                fill=colors["sub"], font=fs, anchor="w", tags=tag,
+                fill=colors["sub"],
+                font=fs,
+                anchor="w",
+                tags=tag,
             )
         else:
             item["tag_sub1"] = cv.create_text(
-                x1+14, y1+54,
+                x1 + 14,
+                y1 + 54,
                 text=status_lbl,
-                fill=colors["sub"], font=fs, anchor="w", tags=tag,
+                fill=colors["sub"],
+                font=fs,
+                anchor="w",
+                tags=tag,
             )
-            item["tag_sub2"] = None   # not used for idle
+            item["tag_sub2"] = None  # not used for idle
 
     def _repaint_card(self, eid: int) -> None:
         """Update colors/text of an existing card in-place (no recreate)."""
-        item   = self._items.get(eid)
+        item = self._items.get(eid)
         if not item:
             return
         status = item["status"]
@@ -380,8 +429,8 @@ class EntityCardGrid(tk.Frame):
         cv = self._canvas
 
         cv.itemconfigure(item["tag_border"], fill=colors["border"])
-        cv.itemconfigure(item["tag_bg"],     fill=colors["bg"])
-        cv.itemconfigure(item["tag_name"],   fill=colors["text"])
+        cv.itemconfigure(item["tag_bg"], fill=colors["bg"])
+        cv.itemconfigure(item["tag_name"], fill=colors["text"])
 
         # Find the card index to get its canvas coordinates
         try:
@@ -398,7 +447,8 @@ class EntityCardGrid(tk.Frame):
             if item["tag_sub2"] is None:
                 tag = self._card_tag(eid)
                 item["tag_sub2"] = cv.create_text(
-                    x1 + 14, y1 + 62,
+                    x1 + 14,
+                    y1 + 62,
                     text=item["ts"],
                     fill=colors["sub"],
                     font=EntityCardGrid._font_sub,
@@ -408,7 +458,10 @@ class EntityCardGrid(tk.Frame):
             else:
                 cv.coords(item["tag_sub2"], x1 + 14, y1 + 62)
                 cv.itemconfigure(
-                    item["tag_sub2"], text=item["ts"], fill=colors["sub"], state="normal"
+                    item["tag_sub2"],
+                    text=item["ts"],
+                    fill=colors["sub"],
+                    state="normal",
                 )
         else:
             # Move sub1 back to the single-line (centred) position
@@ -440,30 +493,33 @@ class EntityCardGrid(tk.Frame):
         self._hovered_eid = -1
 
         rows_list = [dict(r) for r in rows]
-        rows_list.sort(
-            key=lambda r: (r.get("number") or r.get("name") or "").lower()
-        )
+        rows_list.sort(key=lambda r: (r.get("number") or r.get("name") or "").lower())
 
         for row in rows_list:
-            eid    = row["id"]
-            name   = row.get("number") or row.get("name", "")
+            eid = row["id"]
+            name = row.get("number") or row.get("name", "")
             status = row.get("status", "idle")
             raw_ts = row.get("updated") or row.get("created", "")
-            ts     = _fmt_timestamp(raw_ts)
+            ts = _fmt_timestamp(raw_ts)
             self._items[eid] = {
-                "name": name, "status": status, "ts": ts,
-                "tag_border": None, "tag_bg": None,
-                "tag_name": None, "tag_sub1": None, "tag_sub2": None,
+                "name": name,
+                "status": status,
+                "ts": ts,
+                "tag_border": None,
+                "tag_bg": None,
+                "tag_name": None,
+                "tag_sub1": None,
+                "tag_sub2": None,
             }
             self._order.append(eid)
 
-        self._idx_to_eid = list(self._order)   # already sorted
+        self._idx_to_eid = list(self._order)  # already sorted
 
         # Draw all cards (one pass, no per-scroll work needed after this)
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
 
-        total_h = self._total_height()
+        total_h = max(self._total_height(), 200)  # min height for scrollbar
         self._canvas.configure(
             scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
         )
@@ -503,13 +559,14 @@ class EntityCardGrid(tk.Frame):
         self._canvas.delete("all")
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        total_h = self._total_height()
+        total_h = max(self._total_height(), 200)  # min height for scrollbar
         self._canvas.configure(
             scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
         )
         self._canvas.yview_moveto(yview[0])
 
     def _on_mousewheel(self, event) -> None:
+        # Global wheel handler - routes to canvas under cursor.
         # Route only to the canvas under the pointer
         w = event.widget
         while w is not None:
@@ -519,18 +576,25 @@ class EntityCardGrid(tk.Frame):
         else:
             return
 
-        # macOS touchpad sends small deltas; Windows/Linux sends multiples of 120
         delta = event.delta
         if abs(delta) >= 120:
             units = int(-delta / 120)
         else:
             units = -1 if delta > 0 else 1
+        self._canvas.yview_scroll(units, "units")
 
+    def _on_mousewheel_local(self, event) -> None:
+        # Local fallback wheel handler for this canvas only.
+        delta = event.delta
+        if abs(delta) >= 120:
+            units = int(-delta / 120)
+        else:
+            units = -1 if delta > 0 else 1
         self._canvas.yview_scroll(units, "units")
 
     def _on_motion(self, event) -> None:
         cx, cy = self._canvas_coords(event)
-        eid    = self._hit_test(cx, cy)
+        eid = self._hit_test(cx, cy)
         if eid == self._hovered_eid:
             return
         if self._hovered_eid != -1:
@@ -548,13 +612,13 @@ class EntityCardGrid(tk.Frame):
 
     def _on_click(self, event) -> None:
         cx, cy = self._canvas_coords(event)
-        eid    = self._hit_test(cx, cy)
+        eid = self._hit_test(cx, cy)
         if eid != -1:
             self._toggle_status(eid)
 
     def _on_right(self, event) -> None:
         cx, cy = self._canvas_coords(event)
-        eid    = self._hit_test(cx, cy)
+        eid = self._hit_test(cx, cy)
         if eid != -1:
             self._show_context_menu(eid, event)
 
@@ -575,7 +639,7 @@ class EntityCardGrid(tk.Frame):
             messagebox.showerror("Ошибка", str(exc))
             return
         item["status"] = new_status
-        item["ts"]     = datetime.now().strftime("%H:%M %d.%m.%Y")
+        item["ts"] = datetime.now().strftime("%H:%M %d.%m.%Y")
         self._repaint_card(eid)
         self._on_changed()
 
@@ -586,14 +650,17 @@ class EntityCardGrid(tk.Frame):
             except Exception:
                 pass
         menu = tk.Menu(
-            self, tearoff=0,
-            bg=C["surface"], fg=C["text"],
-            activebackground=C["card"], activeforeground=C["red"],
-            font=("Segoe UI", 11), bd=0, relief="flat",
+            self,
+            tearoff=0,
+            bg=C["surface"],
+            fg=C["text"],
+            activebackground=C["card"],
+            activeforeground=C["red"],
+            font=("Segoe UI", 11),
+            bd=0,
+            relief="flat",
         )
-        menu.add_command(
-            label="🗑  Удалить", command=lambda: self._delete_card(eid)
-        )
+        menu.add_command(label="🗑  Удалить", command=lambda: self._delete_card(eid))
         self._context_menu = menu
         try:
             menu.tk_popup(event.x_root, event.y_root)
@@ -624,28 +691,29 @@ class EntityCardGrid(tk.Frame):
 # EntityTable  (ttk.Treeview, used in legacy EntityTab)
 # ---------------------------------------------------------------------------
 
+
 class EntityTable(tk.Frame):
     """Interactive table for vehicles or commanders with inline status toggling."""
 
     _COLUMNS = ("icon", "name", "status", "changed", "del")
     _HEADERS = {
-        "icon":    "",
-        "name":    "Наименование",
-        "status":  "Статус",
+        "icon": "",
+        "name": "Наименование",
+        "status": "Статус",
         "changed": "Изменён",
-        "del":     "",
+        "del": "",
     }
     _WIDTHS = {"icon": 42, "name": 260, "status": 130, "changed": 160, "del": 40}
 
     _STATUS_DISPLAY = {
-        "idle":     ("●", C["idle"],     "В ожидании"),
-        "arrived":  ("▲", C["arrived"],  "Прибыл"),
+        "idle": ("●", C["idle"], "В ожидании"),
+        "arrived": ("▲", C["arrived"], "Прибыл"),
         "departed": ("▼", C["departed"], "Убыл"),
     }
 
     def __init__(self, master, db: Database, entity_type: str, on_changed, **kwargs):
         super().__init__(master, bg=C["bg"], **kwargs)
-        self.db          = db
+        self.db = db
         self.entity_type = entity_type
         self._on_changed = on_changed
         self._rows: dict[int, dict] = {}
@@ -661,8 +729,11 @@ class EntityTable(tk.Frame):
         container.grid_columnconfigure(0, weight=1)
 
         self._tree = ttk.Treeview(
-            container, columns=self._COLUMNS, show="headings",
-            style="Entity.Treeview", selectmode="browse",
+            container,
+            columns=self._COLUMNS,
+            show="headings",
+            style="Entity.Treeview",
+            selectmode="browse",
         )
         for col in self._COLUMNS:
             self._tree.heading(col, text=self._HEADERS[col])
@@ -675,18 +746,20 @@ class EntityTable(tk.Frame):
             )
         for status, (_, color, _) in self._STATUS_DISPLAY.items():
             self._tree.tag_configure(status, foreground=color)
-        self._tree.tag_configure("odd",  background=C["card"])
+        self._tree.tag_configure("odd", background=C["card"])
         self._tree.tag_configure("even", background=C["surface"])
 
         vsb = ttk.Scrollbar(
-            container, orient="vertical", command=self._tree.yview,
+            container,
+            orient="vertical",
+            command=self._tree.yview,
             style="Entity.Vertical.TScrollbar",
         )
         self._tree.configure(yscrollcommand=vsb.set)
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-        self._tree.bind("<Button-1>",        self._on_press)
+        self._tree.bind("<Button-1>", self._on_press)
         self._tree.bind("<ButtonRelease-1>", self._on_click)
         self._tree.bind(
             "<<TreeviewSelect>>",
@@ -694,15 +767,15 @@ class EntityTable(tk.Frame):
         )
         self._tree.bind("<Motion>", self._on_motion)
         self._hovered_iid: str = ""
-        self._press_iid:   str = ""
+        self._press_iid: str = ""
 
     def populate(self, rows) -> None:
         self._rows.clear()
         self._tree.delete(*self._tree.get_children())
         for i, row in enumerate(rows):
             row_dict = dict(row)
-            eid    = row_dict["id"]
-            name   = row_dict.get("number") or row_dict.get("name", "")
+            eid = row_dict["id"]
+            name = row_dict.get("number") or row_dict.get("name", "")
             status = row_dict.get("status", "idle")
             raw_ts = row_dict.get("updated", row_dict.get("created", ""))
             try:
@@ -715,7 +788,9 @@ class EntityTable(tk.Frame):
             )
             zebra = "odd" if i % 2 else "even"
             self._tree.insert(
-                "", "end", iid=str(eid),
+                "",
+                "end",
+                iid=str(eid),
                 values=(icon, name, label, ts, "🗑"),
                 tags=(status, zebra),
             )
@@ -732,7 +807,7 @@ class EntityTable(tk.Frame):
         self._press_iid = ""
         if self._tree.identify_region(event.x, event.y) != "cell":
             return
-        col_id   = self._tree.identify_column(event.x)
+        col_id = self._tree.identify_column(event.x)
         col_name = self._tree.column(col_id, option="id")
         eid = int(iid)
         if col_name == "del":
