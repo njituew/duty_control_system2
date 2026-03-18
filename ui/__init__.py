@@ -1,8 +1,7 @@
 """Пакет UI-компонентов."""
 
-from ui.components import EntityTable
 from ui.dialogs import InputDialog
-from ui.tabs import EntityTab, HistoryTab, StatsTab
+from ui.tabs import HistoryTab, StatsTab
 from ui.app import App
 
 

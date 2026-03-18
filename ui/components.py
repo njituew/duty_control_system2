@@ -6,7 +6,7 @@ import tkinter.font as tkfont
 from datetime import datetime
 from tkinter import messagebox
 
-from config import C, EVENT_COLORS
+from config import C, EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS
 from database import Database, DatabaseError, NotFoundError
 
 
@@ -101,8 +101,6 @@ class EventTreeview(tk.Frame):
         vsb.grid(row=0, column=1, sticky="ns")
 
     def populate(self, rows) -> None:
-        from config import TYPE_LABELS, EVENT_LABELS
-
         self._tree.delete(*self._tree.get_children())
         for ev in rows:
             tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
@@ -165,6 +163,13 @@ _STATUS_LABEL: dict[str, dict[str, str]] = {
 _CARD_COLS = 3
 _CARD_PAD = 10
 _CARD_H = 82  # card height px
+
+# Named offsets for card text layout — change here, applies everywhere.
+_CARD_TEXT_PAD_X = 14  # horizontal inset from card left edge
+_CARD_NAME_Y = 20  # name label Y offset from card top
+_CARD_STATUS_Y_SINGLE = 54  # status label Y when only one line (idle)
+_CARD_STATUS_Y_DOUBLE = 46  # status label Y when two lines (arrived / departed)
+_CARD_TIME_Y = 62  # timestamp Y when two lines (arrived / departed)
 
 
 class EntityCardGrid(tk.Frame):
@@ -233,12 +238,24 @@ class EntityCardGrid(tk.Frame):
         self._canvas.bind("<Leave>", self._on_leave)
         self._canvas.focus_set()
 
-        # bind_all so the wheel fires even without keyboard focus
-        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self._canvas.bind_all("<Shift-MouseWheel>", lambda _e: None)
-
-        # Local fallback bind
+        # Canvas-local scroll bindings only — avoids stealing wheel events from
+        # other widgets when multiple EntityCardGrid instances are on screen.
         self._canvas.bind("<MouseWheel>", self._on_mousewheel_local)
+        self._canvas.bind("<Shift-MouseWheel>", lambda _e: None)
+
+        # Bind <Enter>/<Leave> on the canvas so we can attach/detach the global
+        # wheel listener only while the pointer is actually over this canvas.
+        self._canvas.bind("<Enter>", self._on_canvas_enter)
+        self._canvas.bind("<Leave>", self._on_canvas_leave)
+
+    def _on_canvas_enter(self, _event) -> None:
+        """Attach the global wheel listener when the cursor enters this canvas."""
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _on_canvas_leave(self, event) -> None:
+        """Remove the global wheel listener when the cursor leaves this canvas."""
+        self._canvas.unbind_all("<MouseWheel>")
+        self._on_leave(event)
 
     def _cell_w(self) -> int:
         w = max(self._canvas_w, _CARD_COLS * 30)
@@ -322,13 +339,13 @@ class EntityCardGrid(tk.Frame):
         # name text — use smaller font for long names to keep them in the card
         name_font = fn if len(item["name"]) <= 18 else EntityCardGrid._font_name_sm
         item["tag_name"] = cv.create_text(
-            x1 + 14,
-            y1 + 20,
+            x1 + _CARD_TEXT_PAD_X,
+            y1 + _CARD_NAME_Y,
             text=item["name"],
             fill=colors["text"],
             font=name_font,
             anchor="w",
-            width=cw - 28,
+            width=cw - _CARD_TEXT_PAD_X * 2,
             tags=tag,
         )
         # status label (line 1 of sub)
@@ -336,8 +353,8 @@ class EntityCardGrid(tk.Frame):
         status_lbl = labels.get(status, "В ожидании")
         if status != "idle":
             item["tag_sub1"] = cv.create_text(
-                x1 + 14,
-                y1 + 46,
+                x1 + _CARD_TEXT_PAD_X,
+                y1 + _CARD_STATUS_Y_DOUBLE,
                 text=status_lbl,
                 fill=colors["sub"],
                 font=fs,
@@ -345,8 +362,8 @@ class EntityCardGrid(tk.Frame):
                 tags=tag,
             )
             item["tag_sub2"] = cv.create_text(
-                x1 + 14,
-                y1 + 62,
+                x1 + _CARD_TEXT_PAD_X,
+                y1 + _CARD_TIME_Y,
                 text=item["ts"],
                 fill=colors["sub"],
                 font=fs,
@@ -355,8 +372,8 @@ class EntityCardGrid(tk.Frame):
             )
         else:
             item["tag_sub1"] = cv.create_text(
-                x1 + 14,
-                y1 + 54,
+                x1 + _CARD_TEXT_PAD_X,
+                y1 + _CARD_STATUS_Y_SINGLE,
                 text=status_lbl,
                 fill=colors["sub"],
                 font=fs,
@@ -389,14 +406,16 @@ class EntityCardGrid(tk.Frame):
 
         if status != "idle":
             # Move sub1 (label) to the two-line position and update text
-            cv.coords(item["tag_sub1"], x1 + 14, y1 + 46)
+            cv.coords(
+                item["tag_sub1"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_STATUS_Y_DOUBLE
+            )
             cv.itemconfigure(item["tag_sub1"], text=status_lbl, fill=colors["sub"])
             # Create tag_sub2 (time) if it didn't exist (card was idle before)
             if item["tag_sub2"] is None:
                 tag = self._card_tag(eid)
                 item["tag_sub2"] = cv.create_text(
-                    x1 + 14,
-                    y1 + 62,
+                    x1 + _CARD_TEXT_PAD_X,
+                    y1 + _CARD_TIME_Y,
                     text=item["ts"],
                     fill=colors["sub"],
                     font=EntityCardGrid._font_sub,
@@ -404,7 +423,7 @@ class EntityCardGrid(tk.Frame):
                     tags=tag,
                 )
             else:
-                cv.coords(item["tag_sub2"], x1 + 14, y1 + 62)
+                cv.coords(item["tag_sub2"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_TIME_Y)
                 cv.itemconfigure(
                     item["tag_sub2"],
                     text=item["ts"],
@@ -413,7 +432,9 @@ class EntityCardGrid(tk.Frame):
                 )
         else:
             # Move sub1 back to the single-line (centred) position
-            cv.coords(item["tag_sub1"], x1 + 14, y1 + 54)
+            cv.coords(
+                item["tag_sub1"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_STATUS_Y_SINGLE
+            )
             cv.itemconfigure(item["tag_sub1"], text=status_lbl, fill=colors["sub"])
             if item["tag_sub2"] is not None:
                 cv.itemconfigure(item["tag_sub2"], state="hidden")
@@ -506,16 +527,8 @@ class EntityCardGrid(tk.Frame):
         self._canvas.yview_moveto(yview[0])
 
     def _on_mousewheel(self, event) -> None:
-        # Global wheel handler - routes to canvas under cursor.
-        # Route only to the canvas under the pointer
-        w = event.widget
-        while w is not None:
-            if w is self._canvas:
-                break
-            w = getattr(w, "master", None)
-        else:
-            return
-
+        # Global wheel handler — fires only while cursor is over this canvas
+        # (attached/detached via _on_canvas_enter / _on_canvas_leave).
         delta = event.delta
         if abs(delta) >= 120:
             units = int(-delta / 120)
@@ -566,7 +579,10 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        new_status = "departed" if item["status"] == "arrived" else "arrived"
+        # Cycle through STATUS_ORDER so all states (idle → arrived → departed → idle)
+        # are reachable instead of toggling only between arrived and departed.
+        current_idx = STATUS_ORDER.index(item["status"])
+        new_status = STATUS_ORDER[(current_idx + 1) % len(STATUS_ORDER)]
         try:
             self.db.update_status_and_log(
                 self.entity_type, eid, item["name"], new_status
@@ -621,175 +637,3 @@ class EntityCardGrid(tk.Frame):
         del self._items[eid]
         self._rebuild_after_delete()
         self._on_changed()
-
-
-class EntityTable(tk.Frame):
-    """Interactive table for vehicles or commanders with inline status toggling."""
-
-    _COLUMNS = ("icon", "name", "status", "changed", "del")
-    _HEADERS = {
-        "icon": "",
-        "name": "Наименование",
-        "status": "Статус",
-        "changed": "Изменён",
-        "del": "",
-    }
-    _WIDTHS = {"icon": 42, "name": 260, "status": 130, "changed": 160, "del": 40}
-
-    _STATUS_DISPLAY = {
-        "idle": ("●", C["idle"], "В ожидании"),
-        "arrived": ("▲", C["arrived"], "Прибыл"),
-        "departed": ("▼", C["departed"], "Убыл"),
-    }
-
-    def __init__(self, master, db: Database, entity_type: str, on_changed, **kwargs):
-        super().__init__(master, bg=C["bg"], **kwargs)
-        self.db = db
-        self.entity_type = entity_type
-        self._on_changed = on_changed
-        self._rows: dict[int, dict] = {}
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        apply_treeview_style("Entity")
-        self._build()
-
-    def _build(self) -> None:
-        container = tk.Frame(self, bg=C["surface"], bd=0, highlightthickness=0)
-        container.grid(row=0, column=0, sticky="nsew")
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
-
-        self._tree = ttk.Treeview(
-            container,
-            columns=self._COLUMNS,
-            show="headings",
-            style="Entity.Treeview",
-            selectmode="browse",
-        )
-        for col in self._COLUMNS:
-            self._tree.heading(col, text=self._HEADERS[col])
-            self._tree.column(
-                col,
-                width=self._WIDTHS[col],
-                minwidth=self._WIDTHS[col],
-                anchor="center" if col in ("icon", "del") else "w",
-                stretch=(col == "name"),
-            )
-        for status, (_, color, _) in self._STATUS_DISPLAY.items():
-            self._tree.tag_configure(status, foreground=color)
-        self._tree.tag_configure("odd", background=C["card"])
-        self._tree.tag_configure("even", background=C["surface"])
-
-        vsb = ttk.Scrollbar(
-            container,
-            orient="vertical",
-            command=self._tree.yview,
-            style="Entity.Vertical.TScrollbar",
-        )
-        self._tree.configure(yscrollcommand=vsb.set)
-        self._tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-
-        self._tree.bind("<Button-1>", self._on_press)
-        self._tree.bind("<ButtonRelease-1>", self._on_click)
-        self._tree.bind(
-            "<<TreeviewSelect>>",
-            lambda _: self._tree.selection_remove(*self._tree.selection()),
-        )
-        self._tree.bind("<Motion>", self._on_motion)
-        self._hovered_iid: str = ""
-        self._press_iid: str = ""
-
-    def populate(self, rows) -> None:
-        self._rows.clear()
-        self._tree.delete(*self._tree.get_children())
-        for i, row in enumerate(rows):
-            row_dict = dict(row)
-            eid = row_dict["id"]
-            name = row_dict.get("number") or row_dict.get("name", "")
-            status = row_dict.get("status", "idle")
-            raw_ts = row_dict.get("updated", row_dict.get("created", ""))
-            try:
-                dt = datetime.strptime(raw_ts[:16], "%Y-%m-%d %H:%M")
-                ts = dt.strftime("%H:%M %d.%m.%Y")
-            except (ValueError, TypeError):
-                ts = raw_ts[:16]
-            icon, _, label = self._STATUS_DISPLAY.get(
-                status, self._STATUS_DISPLAY["idle"]
-            )
-            zebra = "odd" if i % 2 else "even"
-            self._tree.insert(
-                "",
-                "end",
-                iid=str(eid),
-                values=(icon, name, label, ts, "🗑"),
-                tags=(status, zebra),
-            )
-            self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
-
-    def _on_press(self, event) -> None:
-        self._press_iid = self._tree.identify_row(event.y)
-
-    def _on_click(self, event) -> None:
-        iid = self._tree.identify_row(event.y)
-        if not iid or iid != self._press_iid:
-            self._press_iid = ""
-            return
-        self._press_iid = ""
-        if self._tree.identify_region(event.x, event.y) != "cell":
-            return
-        col_id = self._tree.identify_column(event.x)
-        col_name = self._tree.column(col_id, option="id")
-        eid = int(iid)
-        if col_name == "del":
-            self._delete_row(eid)
-        else:
-            self._toggle_status(eid)
-
-    def _toggle_status(self, eid: int) -> None:
-        row = self._rows.get(eid)
-        if not row:
-            return
-        new_status = "departed" if row["status"] == "arrived" else "arrived"
-        try:
-            self.db.update_status_and_log(
-                self.entity_type, eid, row["name"], new_status
-            )
-        except DatabaseError as e:
-            messagebox.showerror("Ошибка", str(e))
-            return
-        row["status"] = new_status
-        icon, _, label = self._STATUS_DISPLAY[new_status]
-        ts_short = datetime.now().strftime("%H:%M %d.%m.%Y")
-        self._tree.item(
-            str(eid),
-            values=(icon, row["name"], label, ts_short, "🗑"),
-            tags=(new_status, row["zebra"]),
-        )
-
-    def _delete_row(self, eid: int) -> None:
-        row = self._rows.get(eid)
-        if not row:
-            return
-        if not messagebox.askyesno("Удаление", f"Удалить «{row['name']}»?"):
-            return
-        try:
-            if self.entity_type == "vehicle":
-                self.db.delete_vehicle(eid)
-            else:
-                self.db.delete_commander(eid)
-        except (DatabaseError, NotFoundError) as e:
-            messagebox.showerror("Ошибка", str(e))
-            return
-        self._tree.delete(str(eid))
-        del self._rows[eid]
-        self._on_changed()
-
-    def _on_motion(self, event) -> None:
-        iid = self._tree.identify_row(event.y)
-        if iid != self._hovered_iid:
-            self._hovered_iid = iid
-            self._tree.configure(cursor="hand2" if iid else "")
-
-    def row_count(self) -> int:
-        return len(self._rows)

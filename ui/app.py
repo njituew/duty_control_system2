@@ -30,6 +30,8 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
+        # Deferred intentionally: Tk must finish its initial geometry pass
+        # before we try to maximise, otherwise winfo_screenwidth() can return 1.
         self.after(0, self._maximize_window)
 
     def _set_icon(self) -> None:

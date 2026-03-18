@@ -34,17 +34,22 @@ def _now() -> str:
 
 # ─────────────────────────── Database ──────────────────────────────
 
+# Tables that are allowed in dynamic SQL fragments (whitelist for _migrate).
+_ALLOWED_TABLES: frozenset[str] = frozenset({"vehicles", "commanders"})
+
 
 class Database:
     """Thin wrapper around a SQLite connection for this application."""
 
     def __init__(self, path: str = DB_PATH):
         try:
-            self.conn = sqlite3.connect(path, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
-            self.conn.execute("PRAGMA journal_mode=WAL")
-            self.conn.execute("PRAGMA synchronous=NORMAL")
-            self.conn.execute("PRAGMA foreign_keys=ON")
+            # Prefixed with underscore: callers must use public methods so that
+            # all writes go through the transaction/logging machinery here.
+            self._conn = sqlite3.connect(path, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
             self._migrate()
         except sqlite3.Error as e:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
@@ -54,7 +59,7 @@ class Database:
     def _migrate(self) -> None:
         """Create tables on first run if they do not already exist. Add missing columns."""
         # Create tables
-        self.conn.executescript(
+        self._conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,18 +86,19 @@ class Database:
             """
         )
 
-        # Migrate: add 'updated' column if missing
+        # Migrate: add 'updated' column if missing.
+        # Table names come from the internal whitelist — no user input reaches here.
         for table, col in [("vehicles", "number"), ("commanders", "name")]:
-            cur = self.conn.execute("PRAGMA table_info({})".format(table))
+            if table not in _ALLOWED_TABLES:
+                raise ValueError(f"Unexpected table name in migration: {table!r}")
+            cur = self._conn.execute(f"PRAGMA table_info({table})")
             columns = [row[1] for row in cur.fetchall()]
             if "updated" not in columns:
-                self.conn.execute(
-                    "ALTER TABLE {} ADD COLUMN updated TEXT DEFAULT NULL".format(table)
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN updated TEXT DEFAULT NULL"
                 )
 
-        self.conn.commit()
-
-    # ─────────────────────────── Vehicles ──────────────────────────
+        self._conn.commit()
 
     # ─────────────────────────── Generic entity helpers ───────────
 
@@ -112,12 +118,12 @@ class Database:
         if not value:
             raise ValueError(f"{entity_type.capitalize()} value must not be empty.")
         try:
-            cur = self.conn.execute(
+            cur = self._conn.execute(
                 f"INSERT INTO {table} ({col}, status, created) VALUES (?, 'idle', ?)",
                 (value, _now()),
             )
             self._log(entity_type, cur.lastrowid, value, "created")
-            self.conn.commit()
+            self._conn.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
             raise DuplicateError(
@@ -130,7 +136,7 @@ class Database:
         """Delete an entity by id and log a 'deleted' event."""
         table, col = self._entity_table(entity_type)
         try:
-            row = self.conn.execute(
+            row = self._conn.execute(
                 f"SELECT {col} FROM {table} WHERE id = ?", (eid,)
             ).fetchone()
         except sqlite3.Error as e:
@@ -139,17 +145,17 @@ class Database:
             raise NotFoundError(f"{entity_type.capitalize()} id={eid} not found.")
         try:
             self._log(entity_type, eid, row[0], "deleted")
-            self.conn.execute(f"DELETE FROM {table} WHERE id = ?", (eid,))
-            self.conn.commit()
+            self._conn.execute(f"DELETE FROM {table} WHERE id = ?", (eid,))
+            self._conn.commit()
         except sqlite3.Error as e:
-            self.conn.rollback()
+            self._conn.rollback()
             raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
 
-    def _get_entities(self, entity_type: str, search: str = "") -> list:
+    def _get_entities(self, entity_type: str, search: str = "") -> list[sqlite3.Row]:
         """Return entities filtered by search, ordered by the name column."""
         table, col = self._entity_table(entity_type)
         try:
-            return self.conn.execute(
+            return self._conn.execute(
                 f"SELECT * FROM {table} WHERE {col} LIKE ? ORDER BY {col}",
                 (f"%{search.strip()}%",),
             ).fetchall()
@@ -166,7 +172,7 @@ class Database:
         """Delete a vehicle by id and write a 'deleted' event."""
         self._delete_entity("vehicle", vid)
 
-    def get_vehicles(self, search: str = "") -> list:
+    def get_vehicles(self, search: str = "") -> list[sqlite3.Row]:
         """Return vehicles whose number contains the search substring."""
         return self._get_entities("vehicle", search)
 
@@ -180,7 +186,7 @@ class Database:
         """Delete a commander by id and write a 'deleted' event."""
         self._delete_entity("commander", cid)
 
-    def get_commanders(self, search: str = "") -> list:
+    def get_commanders(self, search: str = "") -> list[sqlite3.Row]:
         """Return commanders whose name contains the search substring."""
         return self._get_entities("commander", search)
 
@@ -201,27 +207,26 @@ class Database:
             ValueError: If entity_type or status is not a recognized value.
             DatabaseError: On any SQLite error.
         """
-        valid_types = {"vehicle", "commander"}
+        # _entity_table already validates entity_type and raises ValueError for unknowns.
+        table, _ = self._entity_table(entity_type)
+
         valid_statuses = {"idle", "arrived", "departed"}
-        if entity_type not in valid_types:
-            raise ValueError(f"Unknown entity type: {entity_type!r}")
         if status not in valid_statuses:
             raise ValueError(f"Unknown status: {status!r}")
 
-        table = "vehicles" if entity_type == "vehicle" else "commanders"
         try:
-            self.conn.execute(
+            self._conn.execute(
                 f"UPDATE {table} SET status = ?, updated = ? WHERE id = ?",
                 (status, _now(), entity_id),
             )
-            self.conn.execute(
+            self._conn.execute(
                 "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (entity_type, entity_id, entity_name, status, _now()),
             )
-            self.conn.commit()
+            self._conn.commit()
         except sqlite3.Error as e:
-            self.conn.rollback()
+            self._conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
 
     # ─────────────────────────── Events ────────────────────────────
@@ -230,18 +235,18 @@ class Database:
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ) -> None:
         # Internal helper — writes a single event row without committing.
-        # Callers are responsible for calling conn.commit() afterwards.
-        self.conn.execute(
+        # Callers are responsible for calling _conn.commit() afterwards.
+        self._conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
             (entity_type, entity_id, entity_name, event_type, _now()),
         )
 
-    def get_events(self, search: str = "", limit: int = 300) -> list:
+    def get_events(self, search: str = "", limit: int = 300) -> list[sqlite3.Row]:
         """Return events filtered by a search string, newest first."""
         try:
             q = f"%{search.strip()}%"
-            return self.conn.execute(
+            return self._conn.execute(
                 """
                 SELECT * FROM events
                 WHERE entity_name LIKE :q OR event_type LIKE :q OR entity_type LIKE :q
@@ -260,8 +265,8 @@ class Database:
             DatabaseError: On any SQLite error.
         """
         try:
-            self.conn.execute("DELETE FROM events")
-            self.conn.commit()
+            self._conn.execute("DELETE FROM events")
+            self._conn.commit()
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to clear events: {e}") from e
 
@@ -280,7 +285,7 @@ class Database:
         try:
 
             def scalar(sql: str) -> int:
-                return self.conn.execute(sql).fetchone()[0]
+                return self._conn.execute(sql).fetchone()[0]
 
             return {
                 "vehicles": scalar("SELECT COUNT(*) FROM vehicles"),
@@ -296,7 +301,7 @@ class Database:
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to fetch statistics: {e}") from e
 
-    def recent_activity(self, limit: int = 5) -> list:
+    def recent_activity(self, limit: int = 5) -> list[sqlite3.Row]:
         """Return the most recent events.
 
         Args:
@@ -309,7 +314,7 @@ class Database:
             DatabaseError: On any SQLite error.
         """
         try:
-            return self.conn.execute(
+            return self._conn.execute(
                 "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         except sqlite3.Error as e:
