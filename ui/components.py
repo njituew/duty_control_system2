@@ -164,16 +164,23 @@ _STATUS_LABEL = {
     "departed": "Убыл(а) в",
 }
 
-_CARD_COLS = 3  # number of columns in the grid
-_CARD_PAD = 10  # gap between cards
+_CARD_COLS  = 3    # columns in the grid
+_CARD_PAD   = 10   # gap between cards (px)
+_CARD_H     = 82   # card height (px)
+_CARD_RADIUS = 4   # corner radius simulation (not native, used for border thickness)
 
 
 class EntityCardGrid(tk.Frame):
-    """Interactive card grid for vehicles or commanders.
+    """Virtualised card grid — draws cards directly on a Canvas.
 
+    No per-card tk widgets are created, so performance is O(visible) not O(total).
     Left-click  — toggle arrived / departed status.
     Right-click — context menu with "Удалить".
     """
+
+    # Fonts (created once, shared across all instances)
+    _font_name = None
+    _font_sub  = None
 
     def __init__(
         self,
@@ -187,232 +194,303 @@ class EntityCardGrid(tk.Frame):
         self.db = db
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
-        self._rows: dict[int, dict] = {}      # eid -> {status, name, frame, ...}
+
+        # All data lives here — no widgets per card
+        # eid -> {name, status, ts}
+        self._items: dict[int, dict] = {}
+        # Sorted list of eids (display order)
+        self._order: list[int] = []
+
         self._context_menu: tk.Menu | None = None
+        self._canvas_w: int = 0
+        self._hovered_idx: int = -1
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+        self._init_fonts()
         self._build()
+
+    # ------------------------------------------------------------------
+    # Fonts
+    # ------------------------------------------------------------------
+
+    def _init_fonts(self) -> None:
+        import tkinter.font as tkfont
+        if EntityCardGrid._font_name is None:
+            EntityCardGrid._font_name = tkfont.Font(family="Segoe UI", size=12, weight="bold")
+            EntityCardGrid._font_sub  = tkfont.Font(family="Segoe UI", size=9)
 
     # ------------------------------------------------------------------
     # Layout
     # ------------------------------------------------------------------
 
     def _build(self) -> None:
-        """Create the scrollable canvas that hosts all cards."""
-        canvas_frame = tk.Frame(self, bg=C["bg"])
-        canvas_frame.grid(row=0, column=0, sticky="nsew")
-        canvas_frame.grid_rowconfigure(0, weight=1)
-        canvas_frame.grid_columnconfigure(0, weight=1)
-
+        """Create the scrollable canvas."""
         self._canvas = tk.Canvas(
-            canvas_frame,
+            self,
             bg=C["bg"],
             bd=0,
             highlightthickness=0,
         )
-        vsb = tk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
+        vsb = tk.Scrollbar(self, orient="vertical", command=self._canvas.yview)
         self._canvas.configure(yscrollcommand=vsb.set)
 
         self._canvas.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-        # Inner frame that holds all card widgets
-        self._inner = tk.Frame(self._canvas, bg=C["bg"])
-        self._inner_id = self._canvas.create_window(
-            (0, 0), window=self._inner, anchor="nw"
+        self._canvas.bind("<Configure>",       self._on_canvas_configure)
+        self._canvas.bind("<Button-1>",        self._on_click)
+        self._canvas.bind("<Button-2>",        self._on_right)
+        self._canvas.bind("<Button-3>",        self._on_right)
+        self._canvas.bind("<MouseWheel>",      self._on_mousewheel)
+        self._canvas.bind("<Motion>",          self._on_motion)
+        self._canvas.bind("<Leave>",           self._on_leave)
+
+    # ------------------------------------------------------------------
+    # Geometry helpers
+    # ------------------------------------------------------------------
+
+    def _cell_size(self) -> tuple[int, int]:
+        """Return (card_w, row_h) for current canvas width."""
+        w = max(self._canvas_w, _CARD_COLS * 20)
+        total_pad = _CARD_PAD * (_CARD_COLS + 1)
+        card_w = (w - total_pad) // _CARD_COLS
+        return card_w, _CARD_H
+
+    def _card_bbox(self, idx: int) -> tuple[int, int, int, int]:
+        """Return (x1, y1, x2, y2) canvas coords for card at sorted index *idx*."""
+        card_w, card_h = self._cell_size()
+        col = idx % _CARD_COLS
+        row = idx // _CARD_COLS
+        x1 = _CARD_PAD + col * (card_w + _CARD_PAD)
+        y1 = _CARD_PAD + row * (card_h + _CARD_PAD)
+        return x1, y1, x1 + card_w, y1 + card_h
+
+    def _total_height(self) -> int:
+        n = len(self._order)
+        if n == 0:
+            return 0
+        rows = (n + _CARD_COLS - 1) // _CARD_COLS
+        _, card_h = self._cell_size()
+        return _CARD_PAD + rows * (card_h + _CARD_PAD)
+
+    def _idx_at(self, cx: int, cy: int) -> int:
+        """Return sorted index of card under canvas point, or -1."""
+        card_w, card_h = self._cell_size()
+        col = (cx - _CARD_PAD) // (card_w + _CARD_PAD)
+        row = (cy - _CARD_PAD) // (card_h + _CARD_PAD)
+        if col < 0 or col >= _CARD_COLS:
+            return -1
+        idx = row * _CARD_COLS + col
+        if idx < 0 or idx >= len(self._order):
+            return -1
+        # Verify click is inside the card rect, not in padding
+        x1, y1, x2, y2 = self._card_bbox(idx)
+        if x1 <= cx <= x2 and y1 <= cy <= y2:
+            return idx
+        return -1
+
+    # ------------------------------------------------------------------
+    # Drawing
+    # ------------------------------------------------------------------
+
+    def _draw_all(self) -> None:
+        """Redraw every visible card; skip cards outside the viewport."""
+        self._canvas.delete("all")
+        if not self._order or self._canvas_w == 0:
+            return
+
+        # Visible y range in canvas coords
+        yview = self._canvas.yview()
+        total_h = self._total_height()
+        vis_y0 = int(yview[0] * total_h)
+        vis_y1 = int(yview[1] * total_h)
+        # Add a one-row buffer above/below
+        _, card_h = self._cell_size()
+        vis_y0 = max(0, vis_y0 - card_h)
+        vis_y1 = vis_y1 + card_h
+
+        for idx, eid in enumerate(self._order):
+            x1, y1, x2, y2 = self._card_bbox(idx)
+            if y2 < vis_y0 or y1 > vis_y1:
+                continue
+            self._draw_card(idx, eid, x1, y1, x2, y2)
+
+        self._canvas.configure(scrollregion=(0, 0, self._canvas_w, total_h))
+
+    def _draw_card(self, idx: int, eid: int, x1: int, y1: int, x2: int, y2: int) -> None:
+        item = self._items[eid]
+        status = item["status"]
+        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
+        is_hovered = (idx == self._hovered_idx)
+
+        # Border rect
+        border_color = colors["border"]
+        if is_hovered:
+            # Brighten border slightly on hover
+            border_color = colors["text"]
+        self._canvas.create_rectangle(
+            x1, y1, x2, y2,
+            fill=border_color, outline="", tags=("card", f"card_{eid}"),
+        )
+        # Inner rect (1px inset)
+        self._canvas.create_rectangle(
+            x1 + 1, y1 + 1, x2 - 1, y2 - 1,
+            fill=colors["bg"], outline="", tags=("card", f"card_{eid}"),
         )
 
-        self._inner.bind("<Configure>", self._on_inner_configure)
-        self._canvas.bind("<Configure>", self._on_canvas_configure)
-        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _on_inner_configure(self, _event) -> None:
-        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
-
-    def _on_canvas_configure(self, event) -> None:
-        """Sync inner frame width to canvas width and equalize column weights."""
-        self._canvas.itemconfigure(self._inner_id, width=event.width)
-        # Re-apply equal column weights so all 3 columns share the available width
-        for c in range(_CARD_COLS):
-            self._inner.grid_columnconfigure(c, weight=1, uniform="card_col")
-
-    def _on_mousewheel(self, event) -> None:
-        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        pad_x = x1 + 14
+        card_w = x2 - x1
+        # Name label — clipped to card width with ellipsis
+        self._canvas.create_text(
+            pad_x, y1 + 20,
+            text=item["name"],
+            fill=colors["text"],
+            font=EntityCardGrid._font_name,
+            anchor="w",
+            width=card_w - 28,
+            tags=("card", f"card_{eid}"),
+        )
+        # Sub labels: status on line 1, timestamp on line 2
+        status_label = _STATUS_LABEL.get(status, "В ожидании")
+        if status != "idle":
+            self._canvas.create_text(
+                pad_x, y1 + 46,
+                text=status_label,
+                fill=colors["sub"],
+                font=EntityCardGrid._font_sub,
+                anchor="w",
+                tags=("card", f"card_{eid}"),
+            )
+            self._canvas.create_text(
+                pad_x, y1 + 62,
+                text=item["ts"],
+                fill=colors["sub"],
+                font=EntityCardGrid._font_sub,
+                anchor="w",
+                tags=("card", f"card_{eid}"),
+            )
+        else:
+            self._canvas.create_text(
+                pad_x, y1 + 54,
+                text=status_label,
+                fill=colors["sub"],
+                font=EntityCardGrid._font_sub,
+                anchor="w",
+                tags=("card", f"card_{eid}"),
+            )
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def populate(self, rows) -> None:
-        """Replace all cards with data from *rows* (sorted alphabetically)."""
-        # Destroy existing cards
-        for widget in self._inner.winfo_children():
-            widget.destroy()
-        self._rows.clear()
+        """Replace all cards with *rows* data (sorted alphabetically)."""
+        self._items.clear()
 
-        # Sort rows by name/number before displaying
-        rows_list = list(rows)
-        rows_list = [dict(r) for r in rows_list]
+        rows_list = [dict(r) for r in rows]
         rows_list.sort(key=lambda r: (r.get("number") or r.get("name") or "").lower())
 
         for row in rows_list:
-            row_dict = dict(row)
-            eid = row_dict["id"]
-            name = row_dict.get("number") or row_dict.get("name", "")
-            status = row_dict.get("status", "idle")
-            raw_ts = row_dict.get("updated", row_dict.get("created", ""))
+            eid = row["id"]
+            name = row.get("number") or row.get("name", "")
+            status = row.get("status", "idle")
+            raw_ts = row.get("updated") or row.get("created", "")
             try:
                 dt = datetime.strptime(raw_ts[:16], "%Y-%m-%d %H:%M")
                 ts = dt.strftime("%H:%M %d.%m.%Y")
             except (ValueError, TypeError):
                 ts = raw_ts[:16] if raw_ts else "—"
+            self._items[eid] = {"name": name, "status": status, "ts": ts}
 
-            card_frame = self._make_card(eid, name, status, ts)
-            self._rows[eid] = {
-                "status": status,
-                "name": name,
-                "ts": ts,
-                "frame": card_frame,
-            }
-
-        # Place all cards in grid order
-        self._regrid()
-        # Apply equal column weights
-        for c in range(_CARD_COLS):
-            self._inner.grid_columnconfigure(c, weight=1, uniform="card_col")
+        self._rebuild_order()
+        self._draw_all()
 
     def row_count(self) -> int:
         """Return number of currently displayed cards."""
-        return len(self._rows)
+        return len(self._items)
 
-    def _regrid(self) -> None:
-        """Re-place all cards in sorted alphabetical order, filling left→right top→bottom."""
-        # Ungrid all cards first
-        for data in self._rows.values():
-            data["frame"].grid_forget()
-
-        # Sort by name alphabetically
-        sorted_eids = sorted(
-            self._rows.keys(),
-            key=lambda eid: self._rows[eid]["name"].lower(),
+    def _rebuild_order(self) -> None:
+        """Rebuild sorted display order from _items."""
+        self._order = sorted(
+            self._items.keys(),
+            key=lambda eid: self._items[eid]["name"].lower(),
         )
-
-        for i, eid in enumerate(sorted_eids):
-            col = i % _CARD_COLS
-            row_idx = i // _CARD_COLS
-            self._rows[eid]["frame"].grid(
-                row=row_idx,
-                column=col,
-                padx=_CARD_PAD,
-                pady=_CARD_PAD,
-                sticky="ew",
-            )
 
     # ------------------------------------------------------------------
-    # Card creation
+    # Event handlers
     # ------------------------------------------------------------------
 
-    def _make_card(
-        self,
-        eid: int,
-        name: str,
-        status: str,
-        ts: str,
-    ) -> tk.Frame:
-        """Build and return a single card frame."""
-        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
+    def _canvas_y(self, event_y: int) -> int:
+        """Convert widget Y to canvas (scrolled) Y."""
+        total_h = self._total_height()
+        yview = self._canvas.yview()
+        return event_y + int(yview[0] * total_h)
 
-        outer = tk.Frame(
-            self._inner,
-            bg=colors["border"],
-            cursor="hand2",
-        )
-        # 1-px border effect using padding inside outer
-        inner = tk.Frame(
-            outer,
-            bg=colors["bg"],
-            padx=12,
-            pady=8,
-        )
-        inner.pack(fill="both", expand=True, padx=1, pady=1)
+    def _on_canvas_configure(self, event) -> None:
+        self._canvas_w = event.width
+        self._draw_all()
 
-        # Main label (name / number)
-        name_lbl = tk.Label(
-            inner,
-            text=name,
-            bg=colors["bg"],
-            fg=colors["text"],
-            font=("Segoe UI", 12, "bold"),
-            anchor="w",
-        )
-        name_lbl.pack(fill="x")
+    def _on_mousewheel(self, event) -> None:
+        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        self._draw_all()
 
-        # Status sub-label
-        status_label = _STATUS_LABEL.get(status, "В ожидании")
-        if status != "idle":
-            sub_text = f"{status_label} {ts}"
-        else:
-            sub_text = status_label
+    def _on_motion(self, event) -> None:
+        cy = self._canvas_y(event.y)
+        idx = self._idx_at(event.x, cy)
+        if idx != self._hovered_idx:
+            self._hovered_idx = idx
+            self._canvas.configure(cursor="hand2" if idx >= 0 else "")
+            self._draw_all()
 
-        sub_lbl = tk.Label(
-            inner,
-            text=sub_text,
-            bg=colors["bg"],
-            fg=colors["sub"],
-            font=("Segoe UI", 9),
-            anchor="w",
-        )
-        sub_lbl.pack(fill="x")
+    def _on_leave(self, _event) -> None:
+        if self._hovered_idx != -1:
+            self._hovered_idx = -1
+            self._canvas.configure(cursor="")
+            self._draw_all()
 
-        # Store label references so we can update them on status change
-        outer._eid = eid          # type: ignore[attr-defined]
-        outer._name_lbl = name_lbl   # type: ignore[attr-defined]
-        outer._sub_lbl = sub_lbl     # type: ignore[attr-defined]
-        outer._inner_f = inner       # type: ignore[attr-defined]
-
-        # Bind events to all children
-        for widget in (outer, inner, name_lbl, sub_lbl):
-            widget.bind("<Button-1>", lambda e, _eid=eid: self._on_left_click(_eid))
-            widget.bind("<Button-2>", lambda e, _eid=eid: self._on_right_click(_eid, e))
-            widget.bind("<Button-3>", lambda e, _eid=eid: self._on_right_click(_eid, e))
-
-        return outer
-
-    # ------------------------------------------------------------------
-    # Interactions
-    # ------------------------------------------------------------------
-
-    def _on_left_click(self, eid: int) -> None:
-        """Toggle arrived / departed status."""
-        row = self._rows.get(eid)
-        if not row:
+    def _on_click(self, event) -> None:
+        cy = self._canvas_y(event.y)
+        idx = self._idx_at(event.x, cy)
+        if idx < 0:
             return
+        eid = self._order[idx]
+        self._toggle_status(eid)
 
-        new_status = "departed" if row["status"] == "arrived" else "arrived"
+    def _on_right(self, event) -> None:
+        cy = self._canvas_y(event.y)
+        idx = self._idx_at(event.x, cy)
+        if idx < 0:
+            return
+        eid = self._order[idx]
+        self._show_context_menu(eid, event)
+
+    # ------------------------------------------------------------------
+    # Business logic
+    # ------------------------------------------------------------------
+
+    def _toggle_status(self, eid: int) -> None:
+        item = self._items.get(eid)
+        if not item:
+            return
+        new_status = "departed" if item["status"] == "arrived" else "arrived"
         try:
-            self.db.update_status_and_log(
-                self.entity_type, eid, row["name"], new_status
-            )
-        except DatabaseError as e:
-            messagebox.showerror("Ошибка", str(e))
+            self.db.update_status_and_log(self.entity_type, eid, item["name"], new_status)
+        except DatabaseError as exc:
+            messagebox.showerror("Ошибка", str(exc))
             return
-
         ts = datetime.now().strftime("%H:%M %d.%m.%Y")
-        row["status"] = new_status
-        row["ts"] = ts
-        self._update_card_appearance(eid, new_status, ts)
+        item["status"] = new_status
+        item["ts"] = ts
+        self._draw_all()
         self._on_changed()
 
-    def _on_right_click(self, eid: int, event) -> None:
-        """Show context menu with delete option."""
-        # Destroy any previous menu
+    def _show_context_menu(self, eid: int, event) -> None:
         if self._context_menu:
             try:
                 self._context_menu.destroy()
             except Exception:
                 pass
-
         menu = tk.Menu(
             self,
             tearoff=0,
@@ -424,10 +502,7 @@ class EntityCardGrid(tk.Frame):
             bd=0,
             relief="flat",
         )
-        menu.add_command(
-            label="🗑  Удалить",
-            command=lambda: self._delete_card(eid),
-        )
+        menu.add_command(label="🗑  Удалить", command=lambda: self._delete_card(eid))
         self._context_menu = menu
         try:
             menu.tk_popup(event.x_root, event.y_root)
@@ -435,54 +510,23 @@ class EntityCardGrid(tk.Frame):
             menu.grab_release()
 
     def _delete_card(self, eid: int) -> None:
-        """Ask for confirmation and delete the entity."""
-        row = self._rows.get(eid)
-        if not row:
+        item = self._items.get(eid)
+        if not item:
             return
-
-        if not messagebox.askyesno("Удаление", f"Удалить «{row['name']}»?"):
+        if not messagebox.askyesno("Удаление", f"Удалить «{item['name']}»?"):
             return
-
         try:
             if self.entity_type == "vehicle":
                 self.db.delete_vehicle(eid)
             else:
                 self.db.delete_commander(eid)
-        except (DatabaseError, NotFoundError) as e:
-            messagebox.showerror("Ошибка", str(e))
+        except (DatabaseError, NotFoundError) as exc:
+            messagebox.showerror("Ошибка", str(exc))
             return
-
-        frame = row["frame"]
-        frame.destroy()
-        del self._rows[eid]
-        # Rebuild grid to close the gap left by the removed card
-        self._regrid()
+        del self._items[eid]
+        self._rebuild_order()
+        self._draw_all()
         self._on_changed()
-
-    def _update_card_appearance(self, eid: int, status: str, ts: str) -> None:
-        """Repaint a card to reflect a new status."""
-        row = self._rows.get(eid)
-        if not row:
-            return
-
-        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
-        card = row["frame"]
-
-        card.configure(bg=colors["border"])
-        card._inner_f.configure(bg=colors["bg"])   # type: ignore[attr-defined]
-        card._name_lbl.configure(bg=colors["bg"], fg=colors["text"])  # type: ignore[attr-defined]
-
-        status_label = _STATUS_LABEL.get(status, "В ожидании")
-        if status != "idle":
-            sub_text = f"{status_label} {ts}"
-        else:
-            sub_text = status_label
-
-        card._sub_lbl.configure(  # type: ignore[attr-defined]
-            bg=colors["bg"],
-            fg=colors["sub"],
-            text=sub_text,
-        )
 
 
 class EntityTable(tk.Frame):
