@@ -164,8 +164,6 @@ _STATUS_LABEL = {
     "departed": "Убыл(а) в",
 }
 
-_CARD_W = 200   # fixed card width
-_CARD_H = 76    # fixed card height
 _CARD_COLS = 3  # number of columns in the grid
 _CARD_PAD = 10  # gap between cards
 
@@ -233,7 +231,11 @@ class EntityCardGrid(tk.Frame):
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
     def _on_canvas_configure(self, event) -> None:
+        """Sync inner frame width to canvas width and equalize column weights."""
         self._canvas.itemconfigure(self._inner_id, width=event.width)
+        # Re-apply equal column weights so all 3 columns share the available width
+        for c in range(_CARD_COLS):
+            self._inner.grid_columnconfigure(c, weight=1, uniform="card_col")
 
     def _on_mousewheel(self, event) -> None:
         self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -243,13 +245,18 @@ class EntityCardGrid(tk.Frame):
     # ------------------------------------------------------------------
 
     def populate(self, rows) -> None:
-        """Replace all cards with data from *rows*."""
+        """Replace all cards with data from *rows* (sorted alphabetically)."""
         # Destroy existing cards
         for widget in self._inner.winfo_children():
             widget.destroy()
         self._rows.clear()
 
-        for i, row in enumerate(rows):
+        # Sort rows by name/number before displaying
+        rows_list = list(rows)
+        rows_list = [dict(r) for r in rows_list]
+        rows_list.sort(key=lambda r: (r.get("number") or r.get("name") or "").lower())
+
+        for row in rows_list:
             row_dict = dict(row)
             eid = row_dict["id"]
             name = row_dict.get("number") or row_dict.get("name", "")
@@ -262,30 +269,45 @@ class EntityCardGrid(tk.Frame):
                 ts = raw_ts[:16] if raw_ts else "—"
 
             card_frame = self._make_card(eid, name, status, ts)
-            col = i % _CARD_COLS
-            row_idx = i // _CARD_COLS
-            card_frame.grid(
-                row=row_idx,
-                column=col,
-                padx=_CARD_PAD,
-                pady=_CARD_PAD,
-                sticky="nsew",
-            )
             self._rows[eid] = {
                 "status": status,
                 "name": name,
                 "ts": ts,
                 "frame": card_frame,
-                "grid_pos": (row_idx, col),
             }
 
-        # Make all columns equally wide
+        # Place all cards in grid order
+        self._regrid()
+        # Apply equal column weights
         for c in range(_CARD_COLS):
-            self._inner.grid_columnconfigure(c, weight=1)
+            self._inner.grid_columnconfigure(c, weight=1, uniform="card_col")
 
     def row_count(self) -> int:
         """Return number of currently displayed cards."""
         return len(self._rows)
+
+    def _regrid(self) -> None:
+        """Re-place all cards in sorted alphabetical order, filling left→right top→bottom."""
+        # Ungrid all cards first
+        for data in self._rows.values():
+            data["frame"].grid_forget()
+
+        # Sort by name alphabetically
+        sorted_eids = sorted(
+            self._rows.keys(),
+            key=lambda eid: self._rows[eid]["name"].lower(),
+        )
+
+        for i, eid in enumerate(sorted_eids):
+            col = i % _CARD_COLS
+            row_idx = i // _CARD_COLS
+            self._rows[eid]["frame"].grid(
+                row=row_idx,
+                column=col,
+                padx=_CARD_PAD,
+                pady=_CARD_PAD,
+                sticky="ew",
+            )
 
     # ------------------------------------------------------------------
     # Card creation
@@ -433,6 +455,8 @@ class EntityCardGrid(tk.Frame):
         frame = row["frame"]
         frame.destroy()
         del self._rows[eid]
+        # Rebuild grid to close the gap left by the removed card
+        self._regrid()
         self._on_changed()
 
     def _update_card_appearance(self, eid: int, status: str, ts: str) -> None:
