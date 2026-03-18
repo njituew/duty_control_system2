@@ -48,11 +48,6 @@ def apply_treeview_style(
     )
 
 
-# ---------------------------------------------------------------------------
-# EventTreeview
-# ---------------------------------------------------------------------------
-
-
 class EventTreeview(tk.Frame):
     """Read-only table for displaying event log entries."""
 
@@ -124,11 +119,6 @@ class EventTreeview(tk.Frame):
             )
 
 
-# ---------------------------------------------------------------------------
-# Shared timestamp formatter
-# ---------------------------------------------------------------------------
-
-
 def _fmt_timestamp(raw: str) -> str:
     """Parse an ISO-ish timestamp and return 'HH:MM DD.MM.YYYY', or '—'."""
     try:
@@ -137,10 +127,6 @@ def _fmt_timestamp(raw: str) -> str:
     except (ValueError, TypeError):
         return raw[:16] if raw else "—"
 
-
-# ---------------------------------------------------------------------------
-# Card-grid constants
-# ---------------------------------------------------------------------------
 
 _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
     "idle": {
@@ -181,25 +167,6 @@ _CARD_PAD = 10
 _CARD_H = 82  # card height px
 
 
-# ---------------------------------------------------------------------------
-# EntityCardGrid
-# ---------------------------------------------------------------------------
-#
-# Design rationale
-# ────────────────
-# The canvas *scrolls natively* via scrollregion + yview.  We draw every card
-# once (at populate time) at its absolute position in the full virtual canvas,
-# and then never touch the items again during scroll — Tk moves the viewport
-# itself.  This is O(N) at load and O(1) per scroll frame.
-#
-# On hover / status-change we only update the 3-5 items that belong to that
-# card via itemconfigure, not a full redraw.
-#
-# Mousewheel is captured with bind_all and routed only to the canvas under
-# the pointer, so two grids side-by-side don't steal each other's events.
-#
-
-
 class EntityCardGrid(tk.Frame):
     """Interactive card grid backed by a native-scrolling tk.Canvas.
 
@@ -225,12 +192,9 @@ class EntityCardGrid(tk.Frame):
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
-        # eid -> {name, status, ts,
-        #         tag_border, tag_bg, tag_name, tag_sub1, tag_sub2}
         self._items: dict[int, dict] = {}
         self._order: list[int] = []  # sorted display order
 
-        # idx -> eid mapping built at populate time for O(1) hit-test
         self._idx_to_eid: list[int] = []
 
         self._canvas_w: int = 0  # last known canvas pixel width
@@ -243,10 +207,6 @@ class EntityCardGrid(tk.Frame):
         self._init_fonts()
         self._build()
 
-    # ------------------------------------------------------------------
-    # Fonts
-    # ------------------------------------------------------------------
-
     def _init_fonts(self) -> None:
         if EntityCardGrid._font_name is None:
             EntityCardGrid._font_name = tkfont.Font(
@@ -256,10 +216,6 @@ class EntityCardGrid(tk.Frame):
                 family="Segoe UI", size=9, weight="bold"
             )
             EntityCardGrid._font_sub = tkfont.Font(family="Segoe UI", size=9)
-
-    # ------------------------------------------------------------------
-    # Widget construction
-    # ------------------------------------------------------------------
 
     def _build(self) -> None:
         self._canvas = tk.Canvas(self, bg=C["bg"], bd=0, highlightthickness=0)
@@ -283,10 +239,6 @@ class EntityCardGrid(tk.Frame):
 
         # Local fallback bind
         self._canvas.bind("<MouseWheel>", self._on_mousewheel_local)
-
-    # ------------------------------------------------------------------
-    # Geometry helpers  (pure math, no Tcl round-trips)
-    # ------------------------------------------------------------------
 
     def _cell_w(self) -> int:
         w = max(self._canvas_w, _CARD_COLS * 30)
@@ -331,10 +283,6 @@ class EntityCardGrid(tk.Frame):
         if x1 <= cx <= x2 and y1 <= cy <= y2:
             return self._idx_to_eid[idx]
         return -1
-
-    # ------------------------------------------------------------------
-    # Drawing helpers
-    # ------------------------------------------------------------------
 
     def _card_tag(self, eid: int) -> str:
         return f"c{eid}"
@@ -480,10 +428,6 @@ class EntityCardGrid(tk.Frame):
         border = colors["text"] if on else colors["border"]
         self._canvas.itemconfigure(item["tag_border"], fill=border)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def populate(self, rows) -> None:
         """Full rebuild: parse rows, draw all cards, set scrollregion."""
         self._canvas.delete("all")
@@ -542,10 +486,6 @@ class EntityCardGrid(tk.Frame):
         self._canvas.configure(
             scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
         )
-
-    # ------------------------------------------------------------------
-    # Event handlers
-    # ------------------------------------------------------------------
 
     def _on_configure(self, event) -> None:
         new_w = event.width
@@ -622,10 +562,6 @@ class EntityCardGrid(tk.Frame):
         if eid != -1:
             self._show_context_menu(eid, event)
 
-    # ------------------------------------------------------------------
-    # Business logic
-    # ------------------------------------------------------------------
-
     def _toggle_status(self, eid: int) -> None:
         item = self._items.get(eid)
         if not item:
@@ -685,11 +621,6 @@ class EntityCardGrid(tk.Frame):
         del self._items[eid]
         self._rebuild_after_delete()
         self._on_changed()
-
-
-# ---------------------------------------------------------------------------
-# EntityTable  (ttk.Treeview, used in legacy EntityTab)
-# ---------------------------------------------------------------------------
 
 
 class EntityTable(tk.Frame):

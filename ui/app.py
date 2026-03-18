@@ -16,8 +16,8 @@ class App(ctk.CTk):
 
     _NAV_ITEMS = [
         ("accounting", "📋", "Учёт"),
-        ("history",    "🕒", "История"),
-        ("stats",      "📊", "Статистика"),
+        ("history", "🕒", "История"),
+        ("stats", "📊", "Статистика"),
     ]
 
     def __init__(self):
@@ -149,8 +149,8 @@ class App(ctk.CTk):
 
         self._tabs: dict[str, ctk.CTkFrame] = {
             "accounting": AccountingTab(content, self.db),
-            "history":    HistoryTab(content, self.db),
-            "stats":      StatsTab(content, self.db),
+            "history": HistoryTab(content, self.db),
+            "stats": StatsTab(content, self.db),
         }
 
         for tab in self._tabs.values():

@@ -9,11 +9,6 @@ from ui.components import EntityCardGrid, EntityTable, EventTreeview
 from ui.dialogs import InputDialog
 
 
-# ---------------------------------------------------------------------------
-# Accounting (combined ТС + Командование)
-# ---------------------------------------------------------------------------
-
-
 class _EntitySection(ctk.CTkFrame):
     """One half of the AccountingTab: header + search + card grid."""
 
@@ -38,7 +33,6 @@ class _EntitySection(ctk.CTkFrame):
         self._build(title, search_placeholder)
         self.refresh()
 
-    # ------------------------------------------------------------------
     def _build(self, title: str, search_placeholder: str) -> None:
         self._build_toolbar(title, search_placeholder)
         self._build_counter()
@@ -99,7 +93,6 @@ class _EntitySection(ctk.CTkFrame):
         )
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
 
-    # ------------------------------------------------------------------
     def refresh(self) -> None:
         query = self._search_var.get().strip()
         rows = (
@@ -181,11 +174,6 @@ class AccountingTab(ctk.CTkFrame):
         """Reload both sections."""
         self._section_vehicles.refresh()
         self._section_commanders.refresh()
-
-
-# ---------------------------------------------------------------------------
-# EntityTab (legacy single-section tab, kept for compatibility)
-# ---------------------------------------------------------------------------
 
 
 class EntityTab(ctk.CTkFrame):
@@ -322,11 +310,6 @@ class EntityTab(ctk.CTkFrame):
             messagebox.showerror("Ошибка", str(e), parent=self)
 
 
-# ---------------------------------------------------------------------------
-# HistoryTab
-# ---------------------------------------------------------------------------
-
-
 class HistoryTab(ctk.CTkFrame):
     """Tab that shows the full event log with search and clear controls."""
 
@@ -413,11 +396,6 @@ class HistoryTab(ctk.CTkFrame):
             except DatabaseError as e:
                 messagebox.showerror("Ошибка", str(e), parent=self)
             self.refresh()
-
-
-# ---------------------------------------------------------------------------
-# StatsTab
-# ---------------------------------------------------------------------------
 
 
 class StatsTab(ctk.CTkFrame):
