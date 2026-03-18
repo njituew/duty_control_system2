@@ -46,7 +46,6 @@ class Database:
             self.conn.execute("PRAGMA synchronous=NORMAL")
             self.conn.execute("PRAGMA foreign_keys=ON")
             self._migrate()
-            self._ensure_updated_column()
         except sqlite3.Error as e:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
@@ -61,14 +60,14 @@ class Database:
                 number  TEXT    NOT NULL UNIQUE,
                 status  TEXT    NOT NULL DEFAULT 'idle',
                 created TEXT    NOT NULL,
-                updated TEXT
+                updated TEXT    DEFAULT NULL
             );
             CREATE TABLE IF NOT EXISTS commanders (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 name    TEXT    NOT NULL UNIQUE,
                 status  TEXT    NOT NULL DEFAULT 'idle',
                 created TEXT    NOT NULL,
-                updated TEXT
+                updated TEXT    DEFAULT NULL
             );
             CREATE TABLE IF NOT EXISTS events (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,171 +83,93 @@ class Database:
 
     # ─────────────────────────── Vehicles ──────────────────────────
 
-    def add_vehicle(self, number: str) -> int:
-        """Insert a new vehicle and return its generated id.
+    # ─────────────────────────── Generic entity helpers ───────────
 
-        Args:
-            number: Registration number of the vehicle.
+    @staticmethod
+    def _entity_table(entity_type: str) -> tuple[str, str]:
+        """Return (table_name, name_column) for an entity type."""
+        if entity_type == "vehicle":
+            return "vehicles", "number"
+        if entity_type == "commander":
+            return "commanders", "name"
+        raise ValueError(f"Unknown entity type: {entity_type!r}")
 
-        Returns:
-            The auto-assigned integer id of the new row.
-
-        Raises:
-            ValueError: If number is blank.
-            DuplicateError: If a vehicle with this number already exists.
-            DatabaseError: On any other SQLite error.
-        """
-        number = number.strip()
-        if not number:
-            raise ValueError("Vehicle number must not be empty.")
+    def _add_entity(self, entity_type: str, value: str) -> int:
+        """Insert a new entity row and return its id."""
+        table, col = self._entity_table(entity_type)
+        value = value.strip()
+        if not value:
+            raise ValueError(f"{entity_type.capitalize()} value must not be empty.")
         try:
             cur = self.conn.execute(
-                "INSERT INTO vehicles (number, status, created) VALUES (?, 'idle', ?)",
-                (number, _now()),
+                f"INSERT INTO {table} ({col}, status, created) VALUES (?, 'idle', ?)",
+                (value, _now()),
             )
+            self._log(entity_type, cur.lastrowid, value, "created")
             self.conn.commit()
-            self._log("vehicle", cur.lastrowid, number, "created")
             return cur.lastrowid
         except sqlite3.IntegrityError:
-            raise DuplicateError(f"Vehicle '{number}' already exists.")
+            raise DuplicateError(f"{entity_type.capitalize()} '{value}' already exists.")
         except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to add vehicle: {e}") from e
+            raise DatabaseError(f"Failed to add {entity_type}: {e}") from e
 
-    def delete_vehicle(self, vid: int) -> None:
-        """Delete a vehicle by id and write a 'deleted' event.
-
-        Args:
-            vid: Primary key of the vehicle to delete.
-
-        Raises:
-            NotFoundError: If no vehicle with this id exists.
-            DatabaseError: On any SQLite error.
-        """
+    def _delete_entity(self, entity_type: str, eid: int) -> None:
+        """Delete an entity by id and log a 'deleted' event."""
+        table, col = self._entity_table(entity_type)
         try:
             row = self.conn.execute(
-                "SELECT number FROM vehicles WHERE id = ?", (vid,)
+                f"SELECT {col} FROM {table} WHERE id = ?", (eid,)
             ).fetchone()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to delete vehicle: {e}") from e
-
+            raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
         if not row:
-            raise NotFoundError(f"Vehicle id={vid} not found.")
-
+            raise NotFoundError(f"{entity_type.capitalize()} id={eid} not found.")
         try:
-            self.conn.execute(
-                "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
-                "VALUES (?, ?, ?, ?, ?)",
-                ("vehicle", vid, row["number"], "deleted", _now()),
-            )
-            self.conn.execute("DELETE FROM vehicles WHERE id = ?", (vid,))
+            self._log(entity_type, eid, row[0], "deleted")
+            self.conn.execute(f"DELETE FROM {table} WHERE id = ?", (eid,))
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            raise DatabaseError(f"Failed to delete vehicle: {e}") from e
+            raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
 
-    def get_vehicles(self, search: str = "") -> list:
-        """Return vehicles whose number contains the search substring.
-
-        Args:
-            search: Optional filter string (case-insensitive LIKE match).
-
-        Returns:
-            A list of sqlite3.Row objects ordered by number.
-
-        Raises:
-            DatabaseError: On any SQLite error.
-        """
+    def _get_entities(self, entity_type: str, search: str = "") -> list:
+        """Return entities filtered by search, ordered by the name column."""
+        table, col = self._entity_table(entity_type)
         try:
             return self.conn.execute(
-                "SELECT * FROM vehicles WHERE number LIKE ? ORDER BY number",
+                f"SELECT * FROM {table} WHERE {col} LIKE ? ORDER BY {col}",
                 (f"%{search.strip()}%",),
             ).fetchall()
         except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to fetch vehicles: {e}") from e
+            raise DatabaseError(f"Failed to fetch {entity_type}s: {e}") from e
+
+    # ─────────────────────────── Vehicles ──────────────────────────
+
+    def add_vehicle(self, number: str) -> int:
+        """Insert a new vehicle and return its generated id."""
+        return self._add_entity("vehicle", number)
+
+    def delete_vehicle(self, vid: int) -> None:
+        """Delete a vehicle by id and write a 'deleted' event."""
+        self._delete_entity("vehicle", vid)
+
+    def get_vehicles(self, search: str = "") -> list:
+        """Return vehicles whose number contains the search substring."""
+        return self._get_entities("vehicle", search)
 
     # ─────────────────────────── Commanders ────────────────────────
 
     def add_commander(self, name: str) -> int:
-        """Insert a new commander and return his generated id.
-
-        Args:
-            name: Full name of the commander.
-
-        Returns:
-            The auto-assigned integer id of the new row.
-
-        Raises:
-            ValueError: If name is blank.
-            DuplicateError: If a commander with this name already exists.
-            DatabaseError: On any other SQLite error.
-        """
-        name = name.strip()
-        if not name:
-            raise ValueError("Commander name must not be empty.")
-        try:
-            cur = self.conn.execute(
-                "INSERT INTO commanders (name, status, created) VALUES (?, 'idle', ?)",
-                (name, _now()),
-            )
-            self.conn.commit()
-            self._log("commander", cur.lastrowid, name, "created")
-            return cur.lastrowid
-        except sqlite3.IntegrityError:
-            raise DuplicateError(f"Commander '{name}' already exists.")
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to add commander: {e}") from e
+        """Insert a new commander and return his generated id."""
+        return self._add_entity("commander", name)
 
     def delete_commander(self, cid: int) -> None:
-        """Delete a commander by id and write a 'deleted' event.
-
-        Args:
-            cid: Primary key of the commander to delete.
-
-        Raises:
-            NotFoundError: If no commander with this id exists.
-            DatabaseError: On any SQLite error.
-        """
-        try:
-            row = self.conn.execute(
-                "SELECT name FROM commanders WHERE id = ?", (cid,)
-            ).fetchone()
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to delete commander: {e}") from e
-
-        if not row:
-            raise NotFoundError(f"Commander id={cid} not found.")
-
-        try:
-            self.conn.execute(
-                "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
-                "VALUES (?, ?, ?, ?, ?)",
-                ("commander", cid, row["name"], "deleted", _now()),
-            )
-            self.conn.execute("DELETE FROM commanders WHERE id = ?", (cid,))
-            self.conn.commit()
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise DatabaseError(f"Failed to delete commander: {e}") from e
+        """Delete a commander by id and write a 'deleted' event."""
+        self._delete_entity("commander", cid)
 
     def get_commanders(self, search: str = "") -> list:
-        """Return commanders whose name contains the search substring.
-
-        Args:
-            search: Optional filter string (case-insensitive LIKE match).
-
-        Returns:
-            A list of sqlite3.Row objects ordered by name.
-
-        Raises:
-            DatabaseError: On any SQLite error.
-        """
-        try:
-            return self.conn.execute(
-                "SELECT * FROM commanders WHERE name LIKE ? ORDER BY name",
-                (f"%{search.strip()}%",),
-            ).fetchall()
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to fetch commanders: {e}") from e
+        """Return commanders whose name contains the search substring."""
+        return self._get_entities("commander", search)
 
     # ─────────────────────────── Statuses ──────────────────────────
 
@@ -290,17 +211,6 @@ class Database:
             self.conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
 
-    def _ensure_updated_column(self) -> None:
-        """Add 'updated' column to vehicles/commanders if missing (migration)."""
-        for table in ("vehicles", "commanders"):
-            cols = [
-                row[1]
-                for row in self.conn.execute(f"PRAGMA table_info({table})").fetchall()
-            ]
-            if "updated" not in cols:
-                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN updated TEXT")
-        self.conn.commit()
-
     # ─────────────────────────── Events ────────────────────────────
 
     def _log(
@@ -313,32 +223,19 @@ class Database:
             "VALUES (?, ?, ?, ?, ?)",
             (entity_type, entity_id, entity_name, event_type, _now()),
         )
-        self.conn.commit()
 
     def get_events(self, search: str = "", limit: int = 300) -> list:
-        """Return events filtered by a search string, newest first.
-
-        Args:
-            search: Optional substring matched against entity name, event type,
-                and entity type.
-            limit: Maximum number of rows to return.
-
-        Returns:
-            A list of sqlite3.Row objects.
-
-        Raises:
-            DatabaseError: On any SQLite error.
-        """
+        """Return events filtered by a search string, newest first."""
         try:
             q = f"%{search.strip()}%"
             return self.conn.execute(
                 """
                 SELECT * FROM events
-                WHERE entity_name LIKE ? OR event_type LIKE ? OR entity_type LIKE ?
+                WHERE entity_name LIKE :q OR event_type LIKE :q OR entity_type LIKE :q
                 ORDER BY id DESC
-                LIMIT ?
+                LIMIT :lim
                 """,
-                (q, q, q, limit),
+                {"q": q, "lim": limit},
             ).fetchall()
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to fetch events: {e}") from e

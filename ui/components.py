@@ -104,14 +104,6 @@ class EventTreeview(tk.Frame):
         self._tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
 
-    @staticmethod
-    def _fmt_ts(ts: str) -> str:
-        try:
-            dt = datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
-            return dt.strftime("%H:%M %d.%m.%Y")
-        except (ValueError, TypeError):
-            return ts
-
     def populate(self, rows) -> None:
         from config import TYPE_LABELS, EVENT_LABELS
         self._tree.delete(*self._tree.get_children())
@@ -120,13 +112,26 @@ class EventTreeview(tk.Frame):
             self._tree.insert(
                 "", "end",
                 values=(
-                    self._fmt_ts(ev["ts"]),
+                    _fmt_timestamp(ev["ts"]),
                     TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
                     ev["entity_name"],
                     EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
                 ),
                 tags=(tag,),
             )
+
+
+# ---------------------------------------------------------------------------
+# Shared timestamp formatter
+# ---------------------------------------------------------------------------
+
+def _fmt_timestamp(raw: str) -> str:
+    """Parse an ISO-ish timestamp and return 'HH:MM DD.MM.YYYY', or '—'."""
+    try:
+        dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
+        return dt.strftime("%H:%M %d.%m.%Y")
+    except (ValueError, TypeError):
+        return raw[:16] if raw else "—"
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +190,7 @@ class EntityCardGrid(tk.Frame):
 
     _font_name: tkfont.Font | None = None
     _font_sub:  tkfont.Font | None = None
+    _font_name_sm: tkfont.Font | None = None  # smaller variant for long names
 
     def __init__(
         self,
@@ -223,10 +229,9 @@ class EntityCardGrid(tk.Frame):
 
     def _init_fonts(self) -> None:
         if EntityCardGrid._font_name is None:
-            EntityCardGrid._font_name = tkfont.Font(
-                family="Segoe UI", size=12, weight="bold"
-            )
-            EntityCardGrid._font_sub = tkfont.Font(family="Segoe UI", size=9)
+            EntityCardGrid._font_name   = tkfont.Font(family="Segoe UI", size=11, weight="bold")
+            EntityCardGrid._font_name_sm = tkfont.Font(family="Segoe UI", size=9,  weight="bold")
+            EntityCardGrid._font_sub    = tkfont.Font(family="Segoe UI", size=9)
 
     # ------------------------------------------------------------------
     # Widget construction
@@ -330,12 +335,13 @@ class EntityCardGrid(tk.Frame):
             x1+1, y1+1, x2-1, y2-1,
             fill=colors["bg"], outline="", tags=tag,
         )
-        # name text
+        # name text — use smaller font for long names to keep them in the card
+        name_font = fn if len(item["name"]) <= 18 else EntityCardGrid._font_name_sm
         item["tag_name"] = cv.create_text(
             x1+14, y1+20,
             text=item["name"],
             fill=colors["text"],
-            font=fn,
+            font=name_font,
             anchor="w",
             width=cw-28,
             tags=tag,
@@ -443,11 +449,7 @@ class EntityCardGrid(tk.Frame):
             name   = row.get("number") or row.get("name", "")
             status = row.get("status", "idle")
             raw_ts = row.get("updated") or row.get("created", "")
-            try:
-                dt = datetime.strptime(raw_ts[:16], "%Y-%m-%d %H:%M")
-                ts = dt.strftime("%H:%M %d.%m.%Y")
-            except (ValueError, TypeError):
-                ts = raw_ts[:16] if raw_ts else "—"
+            ts     = _fmt_timestamp(raw_ts)
             self._items[eid] = {
                 "name": name, "status": status, "ts": ts,
                 "tag_border": None, "tag_bg": None,
