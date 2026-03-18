@@ -1,13 +1,188 @@
-"""Application tabs: EntityTab, HistoryTab, StatsTab."""
+"""Application tabs: AccountingTab, EntityTab, HistoryTab, StatsTab."""
 
 import customtkinter as ctk
 from tkinter import messagebox
 
 from config import C
 from database import Database, DatabaseError, DuplicateError
-from ui.components import EntityTable, EventTreeview
+from ui.components import EntityCardGrid, EntityTable, EventTreeview
 from ui.dialogs import InputDialog
 
+
+# ---------------------------------------------------------------------------
+# Accounting (combined ТС + Командование)
+# ---------------------------------------------------------------------------
+
+class _EntitySection(ctk.CTkFrame):
+    """One half of the AccountingTab: header + search + card grid."""
+
+    def __init__(
+        self,
+        master,
+        db: Database,
+        entity_type: str,
+        title: str,
+        add_prompt: str,
+        search_placeholder: str,
+        **kwargs,
+    ):
+        super().__init__(master, fg_color=C["bg"], **kwargs)
+        self.db = db
+        self.entity_type = entity_type
+        self.add_prompt = add_prompt
+
+        self.grid_rowconfigure(2, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        self._build(title, search_placeholder)
+        self.refresh()
+
+    # ------------------------------------------------------------------
+    def _build(self, title: str, search_placeholder: str) -> None:
+        self._build_toolbar(title, search_placeholder)
+        self._build_counter()
+
+        self._grid = EntityCardGrid(
+            self,
+            self.db,
+            self.entity_type,
+            on_changed=self._on_grid_changed,
+        )
+        self._grid.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
+
+    def _build_toolbar(self, title: str, search_placeholder: str) -> None:
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
+        toolbar.grid_columnconfigure(1, weight=1)
+
+        # Title
+        ctk.CTkLabel(
+            toolbar,
+            text=title,
+            font=ctk.CTkFont(size=17, weight="bold"),
+            text_color=C["text"],
+        ).grid(row=0, column=0, sticky="w", padx=(0, 12))
+
+        # Search
+        self._search_var = ctk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self.refresh())
+        ctk.CTkEntry(
+            toolbar,
+            textvariable=self._search_var,
+            placeholder_text=f"🔍  {search_placeholder}",
+            font=ctk.CTkFont(size=12),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=32,
+            corner_radius=8,
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 10))
+
+        # Add button
+        ctk.CTkButton(
+            toolbar,
+            text="＋  Добавить",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=C["accent"],
+            hover_color=C["accent_h"],
+            corner_radius=8,
+            height=32,
+            command=self._on_add,
+        ).grid(row=0, column=2, sticky="e")
+
+    def _build_counter(self) -> None:
+        self._counter_lbl = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=10),
+            text_color=C["subtext"],
+        )
+        self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
+
+    # ------------------------------------------------------------------
+    def refresh(self) -> None:
+        query = self._search_var.get().strip()
+        rows = (
+            self.db.get_vehicles(query)
+            if self.entity_type == "vehicle"
+            else self.db.get_commanders(query)
+        )
+        self._grid.populate(rows)
+        self._update_counter()
+
+    def _on_grid_changed(self) -> None:
+        self._update_counter()
+
+    def _update_counter(self) -> None:
+        self._counter_lbl.configure(text=f"Записей: {self._grid.row_count()}")
+
+    def _on_add(self) -> None:
+        dialog = InputDialog(self, title="Добавить", prompt=self.add_prompt)
+        text = dialog.get_input()
+        if text is None:
+            return
+        try:
+            (
+                self.db.add_vehicle(text)
+                if self.entity_type == "vehicle"
+                else self.db.add_commander(text)
+            )
+            self.refresh()
+        except DuplicateError:
+            messagebox.showwarning("Дубликат", f"«{text}» уже существует.", parent=self)
+        except (DatabaseError, ValueError) as e:
+            messagebox.showerror("Ошибка", str(e), parent=self)
+
+
+class AccountingTab(ctk.CTkFrame):
+    """Combined accounting tab: left half = ТС, right half = Командование."""
+
+    def __init__(self, master, db: Database, **kwargs):
+        super().__init__(master, fg_color=C["bg"], **kwargs)
+        self.db = db
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(2, weight=1)
+
+        self._build()
+
+    def _build(self) -> None:
+        # Left section — ТС
+        self._section_vehicles = _EntitySection(
+            self,
+            db=self.db,
+            entity_type="vehicle",
+            title="ТС",
+            add_prompt="Введите номер ТС:",
+            search_placeholder="Поиск по номеру ТС...",
+        )
+        self._section_vehicles.grid(row=0, column=0, sticky="nsew")
+
+        # Vertical divider
+        ctk.CTkFrame(self, fg_color=C["border"], width=1).grid(
+            row=0, column=1, sticky="ns", padx=0
+        )
+
+        # Right section — Командование
+        self._section_commanders = _EntitySection(
+            self,
+            db=self.db,
+            entity_type="commander",
+            title="Командование",
+            add_prompt="Введите ФИО командира:",
+            search_placeholder="Поиск по ФИО...",
+        )
+        self._section_commanders.grid(row=0, column=2, sticky="nsew")
+
+    def refresh(self) -> None:
+        """Reload both sections."""
+        self._section_vehicles.refresh()
+        self._section_commanders.refresh()
+
+
+# ---------------------------------------------------------------------------
+# EntityTab (legacy single-section tab, kept for compatibility)
+# ---------------------------------------------------------------------------
 
 class EntityTab(ctk.CTkFrame):
     """Tab that displays and manages a list of vehicles or commanders."""
@@ -46,7 +221,6 @@ class EntityTab(ctk.CTkFrame):
         self._table.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def _build_toolbar(self, title: str, search_placeholder: str) -> None:
-        """Build the title label, search box, and add button."""
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         toolbar.grid_columnconfigure(1, weight=1)
@@ -94,7 +268,6 @@ class EntityTab(ctk.CTkFrame):
         ).grid(row=0, column=2, sticky="e")
 
     def _build_hints(self) -> None:
-        """Build the row counter and keyboard-hint labels."""
         hints = ctk.CTkFrame(self, fg_color="transparent")
         hints.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 6))
         hints.grid_columnconfigure(0, weight=1)
@@ -112,7 +285,6 @@ class EntityTab(ctk.CTkFrame):
         ).grid(row=0, column=1, sticky="e")
 
     def refresh(self) -> None:
-        """Reload the table from the database using the current search query."""
         query = self._search_var.get().strip()
         rows = (
             self.db.get_vehicles(query)
@@ -129,12 +301,10 @@ class EntityTab(ctk.CTkFrame):
         self._counter_lbl.configure(text=f"Записей: {self._table.row_count()}")
 
     def _on_add(self) -> None:
-        """Open the input dialog and insert the new entity if confirmed."""
         dialog = InputDialog(self, title="Добавить", prompt=self.add_prompt)
         text = dialog.get_input()
         if text is None:
             return
-
         try:
             (
                 self.db.add_vehicle(text)
@@ -147,6 +317,10 @@ class EntityTab(ctk.CTkFrame):
         except (DatabaseError, ValueError) as e:
             messagebox.showerror("Ошибка", str(e), parent=self)
 
+
+# ---------------------------------------------------------------------------
+# HistoryTab
+# ---------------------------------------------------------------------------
 
 class HistoryTab(ctk.CTkFrame):
     """Tab that shows the full event log with search and clear controls."""
@@ -169,7 +343,6 @@ class HistoryTab(ctk.CTkFrame):
         self._tree_widget.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def _build_header(self) -> None:
-        """Build the title and the refresh/clear action buttons."""
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -209,7 +382,6 @@ class HistoryTab(ctk.CTkFrame):
         ).pack(side="left")
 
     def _build_search(self) -> None:
-        """Build the search entry that filters events in real time."""
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
@@ -224,12 +396,10 @@ class HistoryTab(ctk.CTkFrame):
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
     def refresh(self) -> None:
-        """Reload events from the database using the current search query."""
         events = self.db.get_events(self._search_var.get().strip())
         self._tree_widget.populate(events)
 
     def _on_clear(self) -> None:
-        """Ask for confirmation, then delete all event history."""
         if messagebox.askyesno(
             "Очистить историю", "Удалить всю историю событий?", parent=self
         ):
@@ -239,6 +409,10 @@ class HistoryTab(ctk.CTkFrame):
                 messagebox.showerror("Ошибка", str(e), parent=self)
             self.refresh()
 
+
+# ---------------------------------------------------------------------------
+# StatsTab
+# ---------------------------------------------------------------------------
 
 class StatsTab(ctk.CTkFrame):
     """Tab that shows aggregate statistics and a recent-activity feed."""
@@ -287,7 +461,6 @@ class StatsTab(ctk.CTkFrame):
         self._recent_tree.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
     def _build_header(self) -> None:
-        """Build the title and refresh button."""
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
@@ -314,15 +487,6 @@ class StatsTab(ctk.CTkFrame):
     def _make_stat_card(
         self, parent, col: int, title: str, value: str, color: str
     ) -> None:
-        """Create a single numbered stat card inside the stats row.
-
-        Args:
-            parent: The container frame.
-            col: Grid column index.
-            title: Label shown below the number.
-            value: Large number to display.
-            color: Hex color for the number text.
-        """
         frame = ctk.CTkFrame(
             parent,
             fg_color=C["card"],
@@ -345,7 +509,6 @@ class StatsTab(ctk.CTkFrame):
         ).pack(pady=(0, 14))
 
     def refresh(self) -> None:
-        """Rebuild stat cards and reload the recent-activity list."""
         for widget in self._stats_row.winfo_children():
             widget.destroy()
 

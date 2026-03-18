@@ -8,17 +8,16 @@ import customtkinter as ctk
 
 from config import C
 from database import Database
-from ui.tabs import EntityTab, HistoryTab, StatsTab
+from ui.tabs import AccountingTab, HistoryTab, StatsTab
 
 
 class App(ctk.CTk):
     """Main window of the duty control application."""
 
     _NAV_ITEMS = [
-        ("vehicles", "🚗", "ТС"),
-        ("commanders", "👤", "Командование"),
-        ("history", "📋", "История"),
-        ("stats", "📊", "Статистика"),
+        ("accounting", "📋", "Учёт"),
+        ("history",    "🕒", "История"),
+        ("stats",      "📊", "Статистика"),
     ]
 
     def __init__(self):
@@ -45,8 +44,6 @@ class App(ctk.CTk):
 
     def _maximize_window(self) -> None:
         """Expand the window to fill the screen in a cross-platform way."""
-        import sys
-
         self.update_idletasks()
         if sys.platform == "win32":
             self.state("zoomed")
@@ -76,7 +73,7 @@ class App(ctk.CTk):
 
         self._build_sidebar(main)
         self._build_content(main)
-        self._show_tab("vehicles")
+        self._show_tab("accounting")
 
     def _build_header(self) -> None:
         """Build the top header bar with the app title and live clock."""
@@ -151,24 +148,9 @@ class App(ctk.CTk):
         content.grid_columnconfigure(0, weight=1)
 
         self._tabs: dict[str, ctk.CTkFrame] = {
-            "vehicles": EntityTab(
-                content,
-                self.db,
-                entity_type="vehicle",
-                title="Транспортные средства",
-                add_prompt="Введите номер ТС:",
-                search_placeholder="Поиск по номеру ТС...",
-            ),
-            "commanders": EntityTab(
-                content,
-                self.db,
-                entity_type="commander",
-                title="Командование",
-                add_prompt="Введите ФИО командира:",
-                search_placeholder="Поиск по ФИО...",
-            ),
-            "history": HistoryTab(content, self.db),
-            "stats": StatsTab(content, self.db),
+            "accounting": AccountingTab(content, self.db),
+            "history":    HistoryTab(content, self.db),
+            "stats":      StatsTab(content, self.db),
         }
 
         for tab in self._tabs.values():
@@ -178,8 +160,7 @@ class App(ctk.CTk):
         """Raise the selected tab and update the sidebar button states.
 
         Args:
-            key: Tab identifier — one of 'vehicles', 'commanders',
-                'history', 'stats'.
+            key: Tab identifier — one of 'accounting', 'history', 'stats'.
         """
         self._tabs[key].tkraise()
 

@@ -1,4 +1,4 @@
-"""Reusable UI components: EntityTable and EventTreeview."""
+"""Reusable UI components: EntityCardGrid, EntityTable and EventTreeview."""
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -149,6 +149,318 @@ class EventTreeview(tk.Frame):
             )
 
 
+# ---------------------------------------------------------------------------
+# Card-grid colours per status
+# ---------------------------------------------------------------------------
+_CARD_STATUS_COLORS = {
+    "idle":     {"bg": "#1e2130", "border": "#2a2d3e", "text": C["text"],     "sub": C["subtext"]},
+    "arrived":  {"bg": "#0d2318", "border": "#3dd68c", "text": C["arrived"],  "sub": "#2a9c65"},
+    "departed": {"bg": "#280f0f", "border": "#f75f5f", "text": C["departed"], "sub": "#9c2a2a"},
+}
+
+_STATUS_LABEL = {
+    "idle":     "В ожидании",
+    "arrived":  "Прибыл(а) в",
+    "departed": "Убыл(а) в",
+}
+
+_CARD_W = 200   # fixed card width
+_CARD_H = 76    # fixed card height
+_CARD_COLS = 3  # number of columns in the grid
+_CARD_PAD = 10  # gap between cards
+
+
+class EntityCardGrid(tk.Frame):
+    """Interactive card grid for vehicles or commanders.
+
+    Left-click  — toggle arrived / departed status.
+    Right-click — context menu with "Удалить".
+    """
+
+    def __init__(
+        self,
+        master,
+        db: Database,
+        entity_type: str,
+        on_changed=None,
+        **kwargs,
+    ):
+        super().__init__(master, bg=C["bg"], **kwargs)
+        self.db = db
+        self.entity_type = entity_type
+        self._on_changed = on_changed or (lambda: None)
+        self._rows: dict[int, dict] = {}      # eid -> {status, name, frame, ...}
+        self._context_menu: tk.Menu | None = None
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        """Create the scrollable canvas that hosts all cards."""
+        canvas_frame = tk.Frame(self, bg=C["bg"])
+        canvas_frame.grid(row=0, column=0, sticky="nsew")
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
+
+        self._canvas = tk.Canvas(
+            canvas_frame,
+            bg=C["bg"],
+            bd=0,
+            highlightthickness=0,
+        )
+        vsb = tk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=vsb.set)
+
+        self._canvas.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+
+        # Inner frame that holds all card widgets
+        self._inner = tk.Frame(self._canvas, bg=C["bg"])
+        self._inner_id = self._canvas.create_window(
+            (0, 0), window=self._inner, anchor="nw"
+        )
+
+        self._inner.bind("<Configure>", self._on_inner_configure)
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _on_inner_configure(self, _event) -> None:
+        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event) -> None:
+        self._canvas.itemconfigure(self._inner_id, width=event.width)
+
+    def _on_mousewheel(self, event) -> None:
+        self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def populate(self, rows) -> None:
+        """Replace all cards with data from *rows*."""
+        # Destroy existing cards
+        for widget in self._inner.winfo_children():
+            widget.destroy()
+        self._rows.clear()
+
+        for i, row in enumerate(rows):
+            row_dict = dict(row)
+            eid = row_dict["id"]
+            name = row_dict.get("number") or row_dict.get("name", "")
+            status = row_dict.get("status", "idle")
+            raw_ts = row_dict.get("updated", row_dict.get("created", ""))
+            try:
+                dt = datetime.strptime(raw_ts[:16], "%Y-%m-%d %H:%M")
+                ts = dt.strftime("%H:%M %d.%m.%Y")
+            except (ValueError, TypeError):
+                ts = raw_ts[:16] if raw_ts else "—"
+
+            card_frame = self._make_card(eid, name, status, ts)
+            col = i % _CARD_COLS
+            row_idx = i // _CARD_COLS
+            card_frame.grid(
+                row=row_idx,
+                column=col,
+                padx=_CARD_PAD,
+                pady=_CARD_PAD,
+                sticky="nsew",
+            )
+            self._rows[eid] = {
+                "status": status,
+                "name": name,
+                "ts": ts,
+                "frame": card_frame,
+                "grid_pos": (row_idx, col),
+            }
+
+        # Make all columns equally wide
+        for c in range(_CARD_COLS):
+            self._inner.grid_columnconfigure(c, weight=1)
+
+    def row_count(self) -> int:
+        """Return number of currently displayed cards."""
+        return len(self._rows)
+
+    # ------------------------------------------------------------------
+    # Card creation
+    # ------------------------------------------------------------------
+
+    def _make_card(
+        self,
+        eid: int,
+        name: str,
+        status: str,
+        ts: str,
+    ) -> tk.Frame:
+        """Build and return a single card frame."""
+        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
+
+        outer = tk.Frame(
+            self._inner,
+            bg=colors["border"],
+            cursor="hand2",
+        )
+        # 1-px border effect using padding inside outer
+        inner = tk.Frame(
+            outer,
+            bg=colors["bg"],
+            padx=12,
+            pady=8,
+        )
+        inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+        # Main label (name / number)
+        name_lbl = tk.Label(
+            inner,
+            text=name,
+            bg=colors["bg"],
+            fg=colors["text"],
+            font=("Segoe UI", 12, "bold"),
+            anchor="w",
+        )
+        name_lbl.pack(fill="x")
+
+        # Status sub-label
+        status_label = _STATUS_LABEL.get(status, "В ожидании")
+        if status != "idle":
+            sub_text = f"{status_label} {ts}"
+        else:
+            sub_text = status_label
+
+        sub_lbl = tk.Label(
+            inner,
+            text=sub_text,
+            bg=colors["bg"],
+            fg=colors["sub"],
+            font=("Segoe UI", 9),
+            anchor="w",
+        )
+        sub_lbl.pack(fill="x")
+
+        # Store label references so we can update them on status change
+        outer._eid = eid          # type: ignore[attr-defined]
+        outer._name_lbl = name_lbl   # type: ignore[attr-defined]
+        outer._sub_lbl = sub_lbl     # type: ignore[attr-defined]
+        outer._inner_f = inner       # type: ignore[attr-defined]
+
+        # Bind events to all children
+        for widget in (outer, inner, name_lbl, sub_lbl):
+            widget.bind("<Button-1>", lambda e, _eid=eid: self._on_left_click(_eid))
+            widget.bind("<Button-2>", lambda e, _eid=eid: self._on_right_click(_eid, e))
+            widget.bind("<Button-3>", lambda e, _eid=eid: self._on_right_click(_eid, e))
+
+        return outer
+
+    # ------------------------------------------------------------------
+    # Interactions
+    # ------------------------------------------------------------------
+
+    def _on_left_click(self, eid: int) -> None:
+        """Toggle arrived / departed status."""
+        row = self._rows.get(eid)
+        if not row:
+            return
+
+        new_status = "departed" if row["status"] == "arrived" else "arrived"
+        try:
+            self.db.update_status_and_log(
+                self.entity_type, eid, row["name"], new_status
+            )
+        except DatabaseError as e:
+            messagebox.showerror("Ошибка", str(e))
+            return
+
+        ts = datetime.now().strftime("%H:%M %d.%m.%Y")
+        row["status"] = new_status
+        row["ts"] = ts
+        self._update_card_appearance(eid, new_status, ts)
+        self._on_changed()
+
+    def _on_right_click(self, eid: int, event) -> None:
+        """Show context menu with delete option."""
+        # Destroy any previous menu
+        if self._context_menu:
+            try:
+                self._context_menu.destroy()
+            except Exception:
+                pass
+
+        menu = tk.Menu(
+            self,
+            tearoff=0,
+            bg=C["surface"],
+            fg=C["text"],
+            activebackground=C["card"],
+            activeforeground=C["red"],
+            font=("Segoe UI", 11),
+            bd=0,
+            relief="flat",
+        )
+        menu.add_command(
+            label="🗑  Удалить",
+            command=lambda: self._delete_card(eid),
+        )
+        self._context_menu = menu
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _delete_card(self, eid: int) -> None:
+        """Ask for confirmation and delete the entity."""
+        row = self._rows.get(eid)
+        if not row:
+            return
+
+        if not messagebox.askyesno("Удаление", f"Удалить «{row['name']}»?"):
+            return
+
+        try:
+            if self.entity_type == "vehicle":
+                self.db.delete_vehicle(eid)
+            else:
+                self.db.delete_commander(eid)
+        except (DatabaseError, NotFoundError) as e:
+            messagebox.showerror("Ошибка", str(e))
+            return
+
+        frame = row["frame"]
+        frame.destroy()
+        del self._rows[eid]
+        self._on_changed()
+
+    def _update_card_appearance(self, eid: int, status: str, ts: str) -> None:
+        """Repaint a card to reflect a new status."""
+        row = self._rows.get(eid)
+        if not row:
+            return
+
+        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
+        card = row["frame"]
+
+        card.configure(bg=colors["border"])
+        card._inner_f.configure(bg=colors["bg"])   # type: ignore[attr-defined]
+        card._name_lbl.configure(bg=colors["bg"], fg=colors["text"])  # type: ignore[attr-defined]
+
+        status_label = _STATUS_LABEL.get(status, "В ожидании")
+        if status != "idle":
+            sub_text = f"{status_label} {ts}"
+        else:
+            sub_text = status_label
+
+        card._sub_lbl.configure(  # type: ignore[attr-defined]
+            bg=colors["bg"],
+            fg=colors["sub"],
+            text=sub_text,
+        )
+
+
 class EntityTable(tk.Frame):
     """Interactive table for vehicles or commanders with inline status toggling."""
 
@@ -232,11 +544,7 @@ class EntityTable(tk.Frame):
         self._press_iid: str = ""
 
     def populate(self, rows) -> None:
-        """Replace all rows with the given entity records.
-
-        Args:
-            rows: Iterable of sqlite3.Row objects from vehicles or commanders.
-        """
+        """Replace all rows with the given entity records."""
         self._rows.clear()
         self._tree.delete(*self._tree.get_children())
 
@@ -267,14 +575,10 @@ class EntityTable(tk.Frame):
             self._rows[eid] = {"status": status, "name": name, "zebra": zebra}
 
     def _on_press(self, event) -> None:
-        """Record which row received the mouse-down event."""
         self._press_iid = self._tree.identify_row(event.y)
 
     def _on_click(self, event) -> None:
-        """Handle a complete click: toggle status or delete depending on column."""
         iid = self._tree.identify_row(event.y)
-
-        # Only act if the release happened on the same row as the press.
         if not iid or iid != self._press_iid:
             self._press_iid = ""
             return
@@ -293,11 +597,6 @@ class EntityTable(tk.Frame):
             self._toggle_status(eid)
 
     def _toggle_status(self, eid: int) -> None:
-        """Flip the entity between 'arrived' and 'departed' and update the row.
-
-        Args:
-            eid: Primary key of the entity to update.
-        """
         row = self._rows.get(eid)
         if not row:
             return
@@ -322,11 +621,6 @@ class EntityTable(tk.Frame):
         )
 
     def _delete_row(self, eid: int) -> None:
-        """Ask for confirmation and delete the entity from the database.
-
-        Args:
-            eid: Primary key of the entity to delete.
-        """
         row = self._rows.get(eid)
         if not row:
             return
@@ -348,12 +642,10 @@ class EntityTable(tk.Frame):
         self._on_changed()
 
     def _on_motion(self, event) -> None:
-        """Switch to a pointer cursor when hovering over a row."""
         iid = self._tree.identify_row(event.y)
         if iid != self._hovered_iid:
             self._hovered_iid = iid
             self._tree.configure(cursor="hand2" if iid else "")
 
     def row_count(self) -> int:
-        """Return the number of currently displayed rows."""
         return len(self._rows)
