@@ -46,6 +46,7 @@ class Database:
             self.conn.execute("PRAGMA synchronous=NORMAL")
             self.conn.execute("PRAGMA foreign_keys=ON")
             self._migrate()
+            self._ensure_updated_column()
         except sqlite3.Error as e:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
@@ -59,13 +60,15 @@ class Database:
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 number  TEXT    NOT NULL UNIQUE,
                 status  TEXT    NOT NULL DEFAULT 'idle',
-                created TEXT    NOT NULL
+                created TEXT    NOT NULL,
+                updated TEXT
             );
             CREATE TABLE IF NOT EXISTS commanders (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 name    TEXT    NOT NULL UNIQUE,
                 status  TEXT    NOT NULL DEFAULT 'idle',
-                created TEXT    NOT NULL
+                created TEXT    NOT NULL,
+                updated TEXT
             );
             CREATE TABLE IF NOT EXISTS events (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,7 +277,8 @@ class Database:
         table = "vehicles" if entity_type == "vehicle" else "commanders"
         try:
             self.conn.execute(
-                f"UPDATE {table} SET status = ? WHERE id = ?", (status, entity_id)
+                f"UPDATE {table} SET status = ?, updated = ? WHERE id = ?",
+                (status, _now(), entity_id),
             )
             self.conn.execute(
                 "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
@@ -285,6 +289,17 @@ class Database:
         except sqlite3.Error as e:
             self.conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
+
+    def _ensure_updated_column(self) -> None:
+        """Add 'updated' column to vehicles/commanders if missing (migration)."""
+        for table in ("vehicles", "commanders"):
+            cols = [
+                row[1]
+                for row in self.conn.execute(f"PRAGMA table_info({table})").fetchall()
+            ]
+            if "updated" not in cols:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN updated TEXT")
+        self.conn.commit()
 
     # ─────────────────────────── Events ────────────────────────────
 
