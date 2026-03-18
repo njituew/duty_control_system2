@@ -9,9 +9,6 @@ from config import DB_PATH
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────── Exceptions ────────────────────────────
-
-
 class DatabaseError(Exception):
     """Base exception for all database-layer errors."""
 
@@ -24,27 +21,24 @@ class NotFoundError(DatabaseError):
     """Raised when a requested record does not exist."""
 
 
-# ─────────────────────────── Helpers ───────────────────────────────
-
-
 def _now() -> str:
     """Return the current timestamp as an ISO-formatted string."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# ─────────────────────────── Database ──────────────────────────────
-
-# Tables that are allowed in dynamic SQL fragments (whitelist for _migrate).
+# Tables allowed in dynamic SQL fragments — guards against injection in _migrate.
 _ALLOWED_TABLES: frozenset[str] = frozenset({"vehicles", "commanders"})
 
 
 class Database:
-    """Thin wrapper around a SQLite connection for this application."""
+    """Thin wrapper around a SQLite connection for this application.
+
+    All writes go through the transaction and event-logging machinery
+    exposed by the public methods; callers must not access _conn directly.
+    """
 
     def __init__(self, path: str = DB_PATH):
         try:
-            # Prefixed with underscore: callers must use public methods so that
-            # all writes go through the transaction/logging machinery here.
             self._conn = sqlite3.connect(path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
@@ -54,10 +48,8 @@ class Database:
         except sqlite3.Error as e:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
-    # ─────────────────────────── Schema ────────────────────────────
-
     def _migrate(self) -> None:
-        """Create tables on first run if they do not already exist. Add missing columns."""
+        """Create tables on first run and add any missing columns."""
         # Create tables
         self._conn.executescript(
             """
@@ -86,7 +78,7 @@ class Database:
             """
         )
 
-        # Migrate: add 'updated' column if missing.
+        # Add 'updated' column to older databases that pre-date it.
         # Table names come from the internal whitelist — no user input reaches here.
         for table, col in [("vehicles", "number"), ("commanders", "name")]:
             if table not in _ALLOWED_TABLES:
@@ -100,8 +92,6 @@ class Database:
 
         self._conn.commit()
 
-    # ─────────────────────────── Generic entity helpers ───────────
-
     @staticmethod
     def _entity_table(entity_type: str) -> tuple[str, str]:
         """Return (table_name, name_column) for an entity type."""
@@ -112,7 +102,7 @@ class Database:
         raise ValueError(f"Unknown entity type: {entity_type!r}")
 
     def _add_entity(self, entity_type: str, value: str) -> int:
-        """Insert a new entity row and return its id."""
+        """Insert a new entity and return its generated id."""
         table, col = self._entity_table(entity_type)
         value = value.strip()
         if not value:
@@ -162,8 +152,6 @@ class Database:
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to fetch {entity_type}s: {e}") from e
 
-    # ─────────────────────────── Vehicles ──────────────────────────
-
     def add_vehicle(self, number: str) -> int:
         """Insert a new vehicle and return its generated id."""
         return self._add_entity("vehicle", number)
@@ -176,8 +164,6 @@ class Database:
         """Return vehicles whose number contains the search substring."""
         return self._get_entities("vehicle", search)
 
-    # ─────────────────────────── Commanders ────────────────────────
-
     def add_commander(self, name: str) -> int:
         """Insert a new commander and return his generated id."""
         return self._add_entity("commander", name)
@@ -189,8 +175,6 @@ class Database:
     def get_commanders(self, search: str = "") -> list[sqlite3.Row]:
         """Return commanders whose name contains the search substring."""
         return self._get_entities("commander", search)
-
-    # ─────────────────────────── Statuses ──────────────────────────
 
     def update_status_and_log(
         self, entity_type: str, entity_id: int, entity_name: str, status: str
@@ -207,8 +191,9 @@ class Database:
             ValueError: If entity_type or status is not a recognized value.
             DatabaseError: On any SQLite error.
         """
-        # _entity_table already validates entity_type and raises ValueError for unknowns.
-        table, _ = self._entity_table(entity_type)
+        table, _ = self._entity_table(
+            entity_type
+        )  # raises ValueError for unknown types
 
         valid_statuses = {"idle", "arrived", "departed"}
         if status not in valid_statuses:
@@ -229,13 +214,10 @@ class Database:
             self._conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
 
-    # ─────────────────────────── Events ────────────────────────────
-
     def _log(
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ) -> None:
-        # Internal helper — writes a single event row without committing.
-        # Callers are responsible for calling _conn.commit() afterwards.
+        # Write a single event row without committing; caller must commit.
         self._conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -269,8 +251,6 @@ class Database:
             self._conn.commit()
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to clear events: {e}") from e
-
-    # ─────────────────────────── Statistics ────────────────────────
 
     def stats(self) -> dict:
         """Return aggregate counts for the dashboard.

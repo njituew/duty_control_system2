@@ -30,8 +30,8 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
-        # Deferred intentionally: Tk must finish its initial geometry pass
-        # before we try to maximise, otherwise winfo_screenwidth() can return 1.
+        # Defer until after the initial geometry pass; otherwise winfo_screenwidth()
+        # may return 1 on some platforms.
         self.after(0, self._maximize_window)
 
     def _set_icon(self) -> None:
@@ -45,7 +45,7 @@ class App(ctk.CTk):
             self.iconbitmap(str(icon_path))
 
     def _maximize_window(self) -> None:
-        """Expand the window to fill the screen in a cross-platform way."""
+        """Maximise the window in a cross-platform way."""
         self.update_idletasks()
         if sys.platform == "win32":
             self.state("zoomed")
@@ -143,7 +143,7 @@ class App(ctk.CTk):
         ).pack(side="bottom", pady=8)
 
     def _build_content(self, parent: ctk.CTkFrame) -> None:
-        """Create all tab frames stacked on top of each other."""
+        """Create all tab frames, stacked on top of each other in the same grid cell."""
         content = ctk.CTkFrame(parent, fg_color=C["bg"])
         content.grid(row=0, column=1, sticky="nsew")
         content.grid_rowconfigure(0, weight=1)
@@ -172,6 +172,6 @@ class App(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", text_color=C["subtext"])
 
-        # History and stats always show fresh data when switched to.
+        # Refresh data-heavy tabs on every visit so they never show stale content.
         if key in ("history", "stats"):
             self._tabs[key].refresh()

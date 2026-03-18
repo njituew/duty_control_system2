@@ -175,9 +175,9 @@ _CARD_TIME_Y = 62  # timestamp Y when two lines (arrived / departed)
 class EntityCardGrid(tk.Frame):
     """Interactive card grid backed by a native-scrolling tk.Canvas.
 
-    populate()    — O(N) full rebuild.
-    scroll        — O(1), handled entirely by Tk.
-    hover / click — O(1), itemconfigure on the touched card only.
+    Cards are rendered as Canvas items for performance:
+    populate() does a full O(N) rebuild; hover and click are O(1)
+    itemconfigure calls on the touched card only.
     """
 
     _font_name: tkfont.Font | None = None
@@ -197,14 +197,12 @@ class EntityCardGrid(tk.Frame):
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
-        self._items: dict[int, dict] = {}
-        self._order: list[int] = []  # sorted display order
+        self._items: dict[int, dict] = {}  # eid -> card data and canvas item ids
+        self._order: list[int] = []  # eids in sorted display order
+        self._idx_to_eid: list[int] = []  # positional index -> eid (same as _order)
 
-        self._idx_to_eid: list[int] = []
-
-        self._canvas_w: int = 0  # last known canvas pixel width
+        self._canvas_w: int = 0
         self._hovered_eid: int = -1
-
         self._context_menu: tk.Menu | None = None
 
         self.grid_rowconfigure(0, weight=1)
@@ -245,15 +243,15 @@ class EntityCardGrid(tk.Frame):
 
         # Bind <Enter>/<Leave> on the canvas so we can attach/detach the global
         # wheel listener only while the pointer is actually over this canvas.
+        # Attach/detach the global wheel listener only while the pointer is
+        # over this canvas, so it doesn't steal scroll from other widgets.
         self._canvas.bind("<Enter>", self._on_canvas_enter)
         self._canvas.bind("<Leave>", self._on_canvas_leave)
 
     def _on_canvas_enter(self, _event) -> None:
-        """Attach the global wheel listener when the cursor enters this canvas."""
         self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
     def _on_canvas_leave(self, event) -> None:
-        """Remove the global wheel listener when the cursor leaves this canvas."""
         self._canvas.unbind_all("<MouseWheel>")
         self._on_leave(event)
 
@@ -262,7 +260,7 @@ class EntityCardGrid(tk.Frame):
         return (w - _CARD_PAD * (_CARD_COLS + 1)) // _CARD_COLS
 
     def _card_rect(self, idx: int) -> tuple[int, int, int, int]:
-        """Absolute canvas coords (x1,y1,x2,y2) for card at sorted index."""
+        """Return absolute canvas coords (x1,y1,x2,y2) for the card at sorted index."""
         cw = self._cell_w()
         col = idx % _CARD_COLS
         row = idx // _CARD_COLS
@@ -278,7 +276,7 @@ class EntityCardGrid(tk.Frame):
         return _CARD_PAD + rows * (_CARD_H + _CARD_PAD)
 
     def _canvas_coords(self, event) -> tuple[int, int]:
-        """Convert a widget-relative event to absolute canvas coords."""
+        """Convert a widget-relative mouse event to absolute canvas coordinates."""
         cx = self._canvas.canvasx(event.x)
         cy = self._canvas.canvasy(event.y)
         return int(cx), int(cy)
@@ -305,7 +303,7 @@ class EntityCardGrid(tk.Frame):
         return f"c{eid}"
 
     def _draw_card(self, idx: int, eid: int) -> None:
-        """Create all canvas items for one card. Called once per card at populate."""
+        """Create all canvas items for one card; called once per card during populate."""
         item = self._items[eid]
         status = item["status"]
         colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
@@ -316,7 +314,6 @@ class EntityCardGrid(tk.Frame):
         fn = EntityCardGrid._font_name
         fs = EntityCardGrid._font_sub
 
-        # border rectangle
         item["tag_border"] = cv.create_rectangle(
             x1,
             y1,
@@ -326,7 +323,7 @@ class EntityCardGrid(tk.Frame):
             outline="",
             tags=tag,
         )
-        # inner background (1 px inset)
+        # Inner background inset by 1 px to show the border color around the edge.
         item["tag_bg"] = cv.create_rectangle(
             x1 + 1,
             y1 + 1,
@@ -336,7 +333,7 @@ class EntityCardGrid(tk.Frame):
             outline="",
             tags=tag,
         )
-        # name text — use smaller font for long names to keep them in the card
+        # Use a smaller font for long names to prevent them overflowing the card.
         name_font = fn if len(item["name"]) <= 18 else EntityCardGrid._font_name_sm
         item["tag_name"] = cv.create_text(
             x1 + _CARD_TEXT_PAD_X,
@@ -348,7 +345,6 @@ class EntityCardGrid(tk.Frame):
             width=cw - _CARD_TEXT_PAD_X * 2,
             tags=tag,
         )
-        # status label (line 1 of sub)
         labels = _STATUS_LABEL[self.entity_type]
         status_lbl = labels.get(status, "В ожидании")
         if status != "idle":
@@ -383,7 +379,7 @@ class EntityCardGrid(tk.Frame):
             item["tag_sub2"] = None  # not used for idle
 
     def _repaint_card(self, eid: int) -> None:
-        """Update colors/text of an existing card in-place (no recreate)."""
+        """Update an existing card's colors and text in-place without recreating it."""
         item = self._items.get(eid)
         if not item:
             return
@@ -405,12 +401,11 @@ class EntityCardGrid(tk.Frame):
         x1, y1, _x2, _y2 = self._card_rect(idx)
 
         if status != "idle":
-            # Move sub1 (label) to the two-line position and update text
             cv.coords(
                 item["tag_sub1"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_STATUS_Y_DOUBLE
             )
             cv.itemconfigure(item["tag_sub1"], text=status_lbl, fill=colors["sub"])
-            # Create tag_sub2 (time) if it didn't exist (card was idle before)
+            # Create the timestamp text item lazily if the card was previously idle.
             if item["tag_sub2"] is None:
                 tag = self._card_tag(eid)
                 item["tag_sub2"] = cv.create_text(
@@ -431,7 +426,6 @@ class EntityCardGrid(tk.Frame):
                     state="normal",
                 )
         else:
-            # Move sub1 back to the single-line (centred) position
             cv.coords(
                 item["tag_sub1"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_STATUS_Y_SINGLE
             )
@@ -450,7 +444,7 @@ class EntityCardGrid(tk.Frame):
         self._canvas.itemconfigure(item["tag_border"], fill=border)
 
     def populate(self, rows) -> None:
-        """Full rebuild: parse rows, draw all cards, set scrollregion."""
+        """Rebuild the grid from a fresh row set and reset the scroll region."""
         self._canvas.delete("all")
         self._items.clear()
         self._order.clear()
@@ -478,13 +472,11 @@ class EntityCardGrid(tk.Frame):
             }
             self._order.append(eid)
 
-        self._idx_to_eid = list(self._order)  # already sorted
-
-        # Draw all cards (one pass, no per-scroll work needed after this)
+        self._idx_to_eid = list(self._order)
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
 
-        total_h = max(self._total_height(), 200)  # min height for scrollbar
+        total_h = max(self._total_height(), 200)
         self._canvas.configure(
             scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
         )
@@ -493,7 +485,7 @@ class EntityCardGrid(tk.Frame):
         return len(self._items)
 
     def _rebuild_after_delete(self) -> None:
-        """Full redraw after a card is deleted — reuses in-memory data, no DB hit."""
+        """Redraw all cards from in-memory data after a deletion, without hitting the DB."""
         self._canvas.delete("all")
         self._order = sorted(
             self._items.keys(),
@@ -515,20 +507,19 @@ class EntityCardGrid(tk.Frame):
         self._canvas_w = new_w
         if not self._order:
             return
-        # Card widths changed — redraw all cards at new positions
+        # Card pixel width depends on canvas width, so a resize forces a full redraw.
         yview = self._canvas.yview()
         self._canvas.delete("all")
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        total_h = max(self._total_height(), 200)  # min height for scrollbar
+        total_h = max(self._total_height(), 200)
         self._canvas.configure(
             scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
         )
         self._canvas.yview_moveto(yview[0])
 
     def _on_mousewheel(self, event) -> None:
-        # Global wheel handler — fires only while cursor is over this canvas
-        # (attached/detached via _on_canvas_enter / _on_canvas_leave).
+        # Global handler; attached only while the cursor is over this canvas.
         delta = event.delta
         if abs(delta) >= 120:
             units = int(-delta / 120)
@@ -536,14 +527,7 @@ class EntityCardGrid(tk.Frame):
             units = -1 if delta > 0 else 1
         self._canvas.yview_scroll(units, "units")
 
-    def _on_mousewheel_local(self, event) -> None:
-        # Local fallback wheel handler for this canvas only.
-        delta = event.delta
-        if abs(delta) >= 120:
-            units = int(-delta / 120)
-        else:
-            units = -1 if delta > 0 else 1
-        self._canvas.yview_scroll(units, "units")
+    _on_mousewheel_local = _on_mousewheel
 
     def _on_motion(self, event) -> None:
         cx, cy = self._canvas_coords(event)
@@ -579,8 +563,7 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        # Cycle through STATUS_ORDER so all states (idle → arrived → departed → idle)
-        # are reachable instead of toggling only between arrived and departed.
+        # Cycle idle → arrived → departed → idle.
         current_idx = STATUS_ORDER.index(item["status"])
         new_status = STATUS_ORDER[(current_idx + 1) % len(STATUS_ORDER)]
         try:
@@ -633,7 +616,6 @@ class EntityCardGrid(tk.Frame):
         except (DatabaseError, NotFoundError) as exc:
             messagebox.showerror("Ошибка", str(exc))
             return
-        # Remove from in-memory store and redraw
         del self._items[eid]
         self._rebuild_after_delete()
         self._on_changed()

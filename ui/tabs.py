@@ -50,7 +50,6 @@ class _EntitySection(ctk.CTkFrame):
         toolbar.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
         toolbar.grid_columnconfigure(1, weight=1)
 
-        # Title
         ctk.CTkLabel(
             toolbar,
             text=title,
@@ -58,7 +57,6 @@ class _EntitySection(ctk.CTkFrame):
             text_color=C["text"],
         ).grid(row=0, column=0, sticky="w", padx=(0, 12))
 
-        # Search
         self._search_var = ctk.StringVar()
         self._search_var.trace_add("write", lambda *_: self.refresh())
         ctk.CTkEntry(
@@ -72,7 +70,6 @@ class _EntitySection(ctk.CTkFrame):
             corner_radius=8,
         ).grid(row=0, column=1, sticky="ew", padx=(0, 10))
 
-        # Add button
         ctk.CTkButton(
             toolbar,
             text="＋  Добавить",
@@ -140,10 +137,9 @@ class AccountingTab(ctk.CTkFrame):
         self.grid_columnconfigure(2, weight=1)
 
         self._build()
-        self.refresh()  # initial load
+        self.refresh()
 
     def _build(self) -> None:
-        # Left section — ТС
         self._section_vehicles = _EntitySection(
             self,
             db=self.db,
@@ -154,12 +150,10 @@ class AccountingTab(ctk.CTkFrame):
         )
         self._section_vehicles.grid(row=0, column=0, sticky="nsew")
 
-        # Vertical divider
         ctk.CTkFrame(self, fg_color=C["border"], width=1).grid(
             row=0, column=1, sticky="ns", padx=0
         )
 
-        # Right section — Командование
         self._section_commanders = _EntitySection(
             self,
             db=self.db,
