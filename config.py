@@ -70,5 +70,7 @@ EVENT_COLORS: dict[str, str] = {
     "deleted": C["red"],
 }
 
-# Cyclic order for toggling entity statuses.
-STATUS_ORDER: list[str] = ["idle", "arrived", "departed"]
+# Cyclic order for toggling entity statuses on click.
+# "idle" is the initial state set at creation and is intentionally excluded
+# from the cycle — clicking only alternates between arrived and departed.
+STATUS_ORDER: list[str] = ["arrived", "departed"]

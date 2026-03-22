@@ -197,9 +197,10 @@ class EntityCardGrid(tk.Frame):
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
-        self._items: dict[int, dict] = {}  # eid -> card data and canvas item ids
-        self._order: list[int] = []  # eids in sorted display order
-        self._idx_to_eid: list[int] = []  # positional index -> eid (same as _order)
+        self._items: dict[int, dict] = {}
+        self._order: list[int] = []
+        self._idx_to_eid: list[int] = []
+        self._eid_to_idx: dict[int, int] = {}
 
         self._canvas_w: int = 0
         self._hovered_eid: int = -1
@@ -235,16 +236,8 @@ class EntityCardGrid(tk.Frame):
         self._canvas.bind("<Motion>", self._on_motion)
         self._canvas.bind("<Leave>", self._on_leave)
         self._canvas.focus_set()
-
-        # Canvas-local scroll bindings only — avoids stealing wheel events from
-        # other widgets when multiple EntityCardGrid instances are on screen.
-        self._canvas.bind("<MouseWheel>", self._on_mousewheel_local)
         self._canvas.bind("<Shift-MouseWheel>", lambda _e: None)
 
-        # Bind <Enter>/<Leave> on the canvas so we can attach/detach the global
-        # wheel listener only while the pointer is actually over this canvas.
-        # Attach/detach the global wheel listener only while the pointer is
-        # over this canvas, so it doesn't steal scroll from other widgets.
         self._canvas.bind("<Enter>", self._on_canvas_enter)
         self._canvas.bind("<Leave>", self._on_canvas_leave)
 
@@ -275,13 +268,14 @@ class EntityCardGrid(tk.Frame):
         rows = (n + _CARD_COLS - 1) // _CARD_COLS
         return _CARD_PAD + rows * (_CARD_H + _CARD_PAD)
 
-    def _scroll_region_height(self) -> int:
-        """Return the scroll region height: content height, but no less than
-        the visible canvas height.  This prevents the canvas from being
-        scrollable when the content fits entirely on screen."""
+    def _update_scroll_region(self) -> None:
+        """Recalculate and apply the canvas scroll region."""
         content_h = self._total_height()
         canvas_h = self._canvas.winfo_height()
-        return max(content_h, canvas_h if canvas_h > 1 else 0)
+        region_h = max(content_h, canvas_h if canvas_h > 1 else 0)
+        self._canvas.configure(
+            scrollregion=(0, 0, max(self._canvas_w, 1), max(region_h, 1))
+        )
 
     def _canvas_coords(self, event) -> tuple[int, int]:
         """Convert a widget-relative mouse event to absolute canvas coordinates."""
@@ -301,7 +295,6 @@ class EntityCardGrid(tk.Frame):
         idx = row * _CARD_COLS + col
         if idx < 0 or idx >= len(self._idx_to_eid):
             return -1
-        # verify point is inside card body, not in padding gap
         x1, y1, x2, y2 = self._card_rect(idx)
         if x1 <= cx <= x2 and y1 <= cy <= y2:
             return self._idx_to_eid[idx]
@@ -401,10 +394,8 @@ class EntityCardGrid(tk.Frame):
         cv.itemconfigure(item["tag_bg"], fill=colors["bg"])
         cv.itemconfigure(item["tag_name"], fill=colors["text"])
 
-        # Find the card index to get its canvas coordinates
-        try:
-            idx = self._idx_to_eid.index(eid)
-        except ValueError:
+        idx = self._eid_to_idx.get(eid, -1)
+        if idx == -1:
             return
         x1, y1, _x2, _y2 = self._card_rect(idx)
 
@@ -451,12 +442,18 @@ class EntityCardGrid(tk.Frame):
         border = colors["text"] if on else colors["border"]
         self._canvas.itemconfigure(item["tag_border"], fill=border)
 
+    def _sync_order_index(self) -> None:
+        """Rebuild _idx_to_eid and _eid_to_idx from _order. Call after any reorder."""
+        self._idx_to_eid = list(self._order)
+        self._eid_to_idx = {eid: idx for idx, eid in enumerate(self._order)}
+
     def populate(self, rows) -> None:
         """Rebuild the grid from a fresh row set and reset the scroll region."""
         self._canvas.delete("all")
         self._items.clear()
         self._order.clear()
         self._idx_to_eid.clear()
+        self._eid_to_idx.clear()
         self._hovered_eid = -1
 
         rows_list = [dict(r) for r in rows]
@@ -480,13 +477,11 @@ class EntityCardGrid(tk.Frame):
             }
             self._order.append(eid)
 
-        self._idx_to_eid = list(self._order)
+        self._sync_order_index()
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
 
-        self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
-        )
+        self._canvas.after_idle(self._update_scroll_region)
 
     def row_count(self) -> int:
         return len(self._items)
@@ -498,13 +493,11 @@ class EntityCardGrid(tk.Frame):
             self._items.keys(),
             key=lambda e: self._items[e]["name"].lower(),
         )
-        self._idx_to_eid = list(self._order)
+        self._sync_order_index()
         self._hovered_eid = -1
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
-        )
+        self._canvas.after_idle(self._update_scroll_region)
 
     def _on_configure(self, event) -> None:
         new_w = event.width
@@ -512,27 +505,21 @@ class EntityCardGrid(tk.Frame):
             return
         self._canvas_w = new_w
         if not self._order:
+            self._update_scroll_region()
             return
         # Card pixel width depends on canvas width, so a resize forces a full redraw.
         yview = self._canvas.yview()
         self._canvas.delete("all")
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
-        )
+        self._update_scroll_region()
         self._canvas.yview_moveto(yview[0])
 
     def _on_mousewheel(self, event) -> None:
-        # Global handler; attached only while the cursor is over this canvas.
+        # bind_all handler — active only while the cursor is over this canvas.
         delta = event.delta
-        if abs(delta) >= 120:
-            units = int(-delta / 120)
-        else:
-            units = -1 if delta > 0 else 1
+        units = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
         self._canvas.yview_scroll(units, "units")
-
-    _on_mousewheel_local = _on_mousewheel
 
     def _on_motion(self, event) -> None:
         cx, cy = self._canvas_coords(event)
@@ -568,9 +555,16 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        # Cycle idle → arrived → departed → idle.
-        current_idx = STATUS_ORDER.index(item["status"])
-        new_status = STATUS_ORDER[(current_idx + 1) % len(STATUS_ORDER)]
+        # Cycle arrived → departed → arrived …
+        # "idle" is the creation-only state; if the card is still idle,
+        # the first click moves it to arrived (index 0 of STATUS_ORDER).
+        current = item["status"]
+        if current in STATUS_ORDER:
+            current_idx = STATUS_ORDER.index(current)
+            new_status = STATUS_ORDER[(current_idx + 1) % len(STATUS_ORDER)]
+        else:
+            # status == "idle": first click always goes to arrived
+            new_status = STATUS_ORDER[0]
         try:
             self.db.update_status_and_log(
                 self.entity_type, eid, item["name"], new_status
