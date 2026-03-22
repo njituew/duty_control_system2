@@ -10,7 +10,10 @@ from ui.dialogs import InputDialog
 
 
 class _EntitySection(ctk.CTkFrame):
-    """One half of the AccountingTab: header + search + card grid."""
+    """Toolbar + search field + card grid for a single entity type.
+
+    Used as one half of AccountingTab (vehicles on the left, commanders on the right).
+    """
 
     def __init__(
         self,
@@ -91,12 +94,7 @@ class _EntitySection(ctk.CTkFrame):
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
 
     def refresh(self) -> None:
-        query = self._search_var.get().strip()
-        rows = (
-            self.db.get_vehicles(query)
-            if self.entity_type == "vehicle"
-            else self.db.get_commanders(query)
-        )
+        rows = self.db.get_entities(self.entity_type, self._search_var.get().strip())
         self._grid.populate(rows)
         self._update_counter()
 
@@ -112,11 +110,7 @@ class _EntitySection(ctk.CTkFrame):
         if text is None:
             return
         try:
-            (
-                self.db.add_vehicle(text)
-                if self.entity_type == "vehicle"
-                else self.db.add_commander(text)
-            )
+            self.db.add_entity(self.entity_type, text)
             self.refresh()
         except DuplicateError:
             messagebox.showwarning("Дубликат", f"«{text}» уже существует.", parent=self)
@@ -125,7 +119,7 @@ class _EntitySection(ctk.CTkFrame):
 
 
 class AccountingTab(ctk.CTkFrame):
-    """Combined accounting tab: left half = ТС, right half = Командование."""
+    """Two-column accounting tab: vehicles on the left, commanders on the right."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -137,7 +131,6 @@ class AccountingTab(ctk.CTkFrame):
         self.grid_columnconfigure(2, weight=1)
 
         self._build()
-        self.refresh()
 
     def _build(self) -> None:
         self._section_vehicles = _EntitySection(
@@ -165,13 +158,12 @@ class AccountingTab(ctk.CTkFrame):
         self._section_commanders.grid(row=0, column=2, sticky="nsew")
 
     def refresh(self) -> None:
-        """Reload both sections."""
         self._section_vehicles.refresh()
         self._section_commanders.refresh()
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Tab that shows the full event log with search and clear controls."""
+    """Event log tab with search and clear controls."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -259,7 +251,7 @@ class HistoryTab(ctk.CTkFrame):
 
 
 class StatsTab(ctk.CTkFrame):
-    """Tab that shows aggregate statistics and a recent-activity feed."""
+    """Aggregate statistics tab with a recent-activity feed."""
 
     _STAT_CARDS = [
         ("ТС", "vehicles", "accent"),
@@ -339,6 +331,7 @@ class StatsTab(ctk.CTkFrame):
             border_color=C["border"],
         )
         frame.grid(row=0, column=col, padx=6, pady=4, sticky="ew")
+        # Each card column gets equal weight so they share available width evenly.
         parent.grid_columnconfigure(col, weight=1)
 
         ctk.CTkLabel(
@@ -362,5 +355,4 @@ class StatsTab(ctk.CTkFrame):
                 self._stats_row, i, title, str(stats[key]), C[color_key]
             )
 
-        recent = self.db.recent_activity(10)
-        self._recent_tree.populate(recent)
+        self._recent_tree.populate(self.db.recent_activity(10))

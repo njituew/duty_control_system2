@@ -5,7 +5,7 @@ from config import C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """A modal dialog that collects a single line of text from the user."""
+    """Modal dialog that collects a single line of text from the user."""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
@@ -71,13 +71,12 @@ class InputDialog(ctk.CTkToplevel):
         ).pack(side="left", expand=True, fill="x")
 
     def _set_focus(self) -> None:
-        """Bring the dialog to the front and focus the entry field."""
         self.lift()
         self.focus_force()
         self._entry.focus_set()
 
     def _confirm(self, _=None) -> None:
-        """Validate the entry and close the dialog, storing the result."""
+        """Validate the input and store the result, or show an error."""
         text = self._entry.get().strip()
         if not text:
             self._error_lbl.configure(text="Поле не может быть пустым.")

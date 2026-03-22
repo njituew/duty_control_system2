@@ -1,4 +1,4 @@
-"""Reusable UI components: EntityCardGrid, EntityTable and EventTreeview."""
+"""Reusable UI components: EntityCardGrid and EventTreeview."""
 
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -10,10 +10,19 @@ from config import C, EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS
 from database import Database, DatabaseError, NotFoundError
 
 
+def fmt_timestamp(raw: str) -> str:
+    """Parse a stored ISO timestamp and return 'HH:MM DD.MM.YYYY', or '—' on failure."""
+    try:
+        dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
+        return dt.strftime("%H:%M %d.%m.%Y")
+    except (ValueError, TypeError):
+        return raw[:16] if raw else "—"
+
+
 def apply_treeview_style(
     style_name: str, row_height: int = 38, font_size: int = 11
 ) -> None:
-    """Configure a dark ttk.Treeview style under the given name prefix."""
+    """Register a dark ttk.Treeview style under the given name prefix."""
     style = ttk.Style()
     style.theme_use("default")
     style.configure(
@@ -60,14 +69,12 @@ class EventTreeview(tk.Frame):
     }
     _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
 
-    _instance_count = 0
-
     def __init__(
         self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
     ):
         super().__init__(master, bg=C["surface"], bd=0, highlightthickness=0, **kwargs)
-        EventTreeview._instance_count += 1
-        self._style_name = f"Events{EventTreeview._instance_count}"
+        # id(self) gives a unique style name without a mutable class-level counter.
+        self._style_name = f"Events{id(self)}"
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
         self._build(heading_color, row_height)
@@ -90,6 +97,7 @@ class EventTreeview(tk.Frame):
         for event_type, color in EVENT_COLORS.items():
             self._tree.tag_configure(event_type, foreground=color)
         self._tree.tag_configure("default", foreground=C["text"])
+
         vsb = ttk.Scrollbar(
             self,
             orient="vertical",
@@ -101,6 +109,7 @@ class EventTreeview(tk.Frame):
         vsb.grid(row=0, column=1, sticky="ns")
 
     def populate(self, rows) -> None:
+        """Replace all rows with the given dataset."""
         self._tree.delete(*self._tree.get_children())
         for ev in rows:
             tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
@@ -108,7 +117,7 @@ class EventTreeview(tk.Frame):
                 "",
                 "end",
                 values=(
-                    _fmt_timestamp(ev["ts"]),
+                    fmt_timestamp(ev["ts"]),
                     TYPE_LABELS.get(ev["entity_type"], ev["entity_type"]),
                     ev["entity_name"],
                     EVENT_LABELS.get(ev["event_type"], ev["event_type"]),
@@ -117,15 +126,7 @@ class EventTreeview(tk.Frame):
             )
 
 
-def _fmt_timestamp(raw: str) -> str:
-    """Parse an ISO-ish timestamp and return 'HH:MM DD.MM.YYYY', or '—'."""
-    try:
-        dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
-        return dt.strftime("%H:%M %d.%m.%Y")
-    except (ValueError, TypeError):
-        return raw[:16] if raw else "—"
-
-
+# Per-status visual theme for cards: background, border, text, and subdued text colors.
 _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
     "idle": {
         "bg": "#1e2130",
@@ -147,6 +148,7 @@ _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
     },
 }
 
+# Status label text differs slightly between vehicles and commanders (grammatical gender).
 _STATUS_LABEL: dict[str, dict[str, str]] = {
     "vehicle": {
         "idle": "В ожидании",
@@ -162,27 +164,26 @@ _STATUS_LABEL: dict[str, dict[str, str]] = {
 
 _CARD_COLS = 3
 _CARD_PAD = 10
-_CARD_H = 82  # card height px
+_CARD_H = 82  # card height in pixels
 
-# Named offsets for card text layout — change here, applies everywhere.
-_CARD_TEXT_PAD_X = 14  # horizontal inset from card left edge
-_CARD_NAME_Y = 20  # name label Y offset from card top
-_CARD_STATUS_Y_SINGLE = 54  # status label Y when only one line (idle)
-_CARD_STATUS_Y_DOUBLE = 46  # status label Y when two lines (arrived / departed)
-_CARD_TIME_Y = 62  # timestamp Y when two lines (arrived / departed)
+_CARD_TEXT_PAD_X = 14  # horizontal inset from the left card edge
+_CARD_NAME_Y = 20  # Y offset of the name label from the card top
+_CARD_STATUS_Y_SINGLE = 54  # Y for the status line when there is only one line (idle)
+_CARD_STATUS_Y_DOUBLE = 46  # Y for the status line when a timestamp follows below it
+_CARD_TIME_Y = 62  # Y for the timestamp line
 
 
 class EntityCardGrid(tk.Frame):
-    """Interactive card grid backed by a native-scrolling tk.Canvas.
+    """Interactive card grid backed by a scrolling tk.Canvas.
 
-    Cards are rendered as Canvas items for performance:
-    populate() does a full O(N) rebuild; hover and click are O(1)
-    itemconfigure calls on the touched card only.
+    Cards are drawn as Canvas rectangles and text items for performance.
+    populate() rebuilds the whole grid in O(N); hover and click update
+    only the affected card via O(1) itemconfigure calls.
     """
 
     _font_name: tkfont.Font | None = None
     _font_sub: tkfont.Font | None = None
-    _font_name_sm: tkfont.Font | None = None  # smaller variant for long names
+    _font_name_sm: tkfont.Font | None = None  # used for names longer than 18 chars
 
     def __init__(
         self,
@@ -197,10 +198,10 @@ class EntityCardGrid(tk.Frame):
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
-        self._items: dict[int, dict] = {}
-        self._order: list[int] = []
-        self._idx_to_eid: list[int] = []
-        self._eid_to_idx: dict[int, int] = {}
+        self._items: dict[int, dict] = {}  # eid → card data + canvas item ids
+        self._order: list[int] = []  # sorted list of eids
+        self._idx_to_eid: list[int] = []  # position → eid
+        self._eid_to_idx: dict[int, int] = {}  # eid → position
 
         self._canvas_w: int = 0
         self._hovered_eid: int = -1
@@ -212,6 +213,7 @@ class EntityCardGrid(tk.Frame):
         self._build()
 
     def _init_fonts(self) -> None:
+        """Initialise shared class-level Font objects on first instantiation."""
         if EntityCardGrid._font_name is None:
             EntityCardGrid._font_name = tkfont.Font(
                 family="Segoe UI", size=11, weight="bold"
@@ -237,11 +239,11 @@ class EntityCardGrid(tk.Frame):
         self._canvas.bind("<Leave>", self._on_leave)
         self._canvas.focus_set()
         self._canvas.bind("<Shift-MouseWheel>", lambda _e: None)
-
         self._canvas.bind("<Enter>", self._on_canvas_enter)
         self._canvas.bind("<Leave>", self._on_canvas_leave)
 
     def _on_canvas_enter(self, _event) -> None:
+        # Activate mouse-wheel scrolling only while the cursor is over this canvas.
         self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
     def _on_canvas_leave(self, event) -> None:
@@ -253,7 +255,7 @@ class EntityCardGrid(tk.Frame):
         return (w - _CARD_PAD * (_CARD_COLS + 1)) // _CARD_COLS
 
     def _card_rect(self, idx: int) -> tuple[int, int, int, int]:
-        """Return absolute canvas coords (x1,y1,x2,y2) for the card at sorted index."""
+        """Return absolute canvas coords (x1, y1, x2, y2) for card at sorted index."""
         cw = self._cell_w()
         col = idx % _CARD_COLS
         row = idx // _CARD_COLS
@@ -269,7 +271,6 @@ class EntityCardGrid(tk.Frame):
         return _CARD_PAD + rows * (_CARD_H + _CARD_PAD)
 
     def _update_scroll_region(self) -> None:
-        """Recalculate and apply the canvas scroll region."""
         content_h = self._total_height()
         canvas_h = self._canvas.winfo_height()
         region_h = max(content_h, canvas_h if canvas_h > 1 else 0)
@@ -278,13 +279,11 @@ class EntityCardGrid(tk.Frame):
         )
 
     def _canvas_coords(self, event) -> tuple[int, int]:
-        """Convert a widget-relative mouse event to absolute canvas coordinates."""
-        cx = self._canvas.canvasx(event.x)
-        cy = self._canvas.canvasy(event.y)
-        return int(cx), int(cy)
+        """Convert widget-relative mouse coords to absolute canvas coords."""
+        return int(self._canvas.canvasx(event.x)), int(self._canvas.canvasy(event.y))
 
     def _hit_test(self, cx: int, cy: int) -> int:
-        """Return eid of card under canvas point, or -1."""
+        """Return the eid of the card under the given canvas point, or -1."""
         cw = self._cell_w()
         if cw <= 0:
             return -1
@@ -304,7 +303,7 @@ class EntityCardGrid(tk.Frame):
         return f"c{eid}"
 
     def _draw_card(self, idx: int, eid: int) -> None:
-        """Create all canvas items for one card; called once per card during populate."""
+        """Create all canvas items for a card. Called once per card in populate()."""
         item = self._items[eid]
         status = item["status"]
         colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
@@ -312,8 +311,6 @@ class EntityCardGrid(tk.Frame):
         x1, y1, x2, y2 = self._card_rect(idx)
         tag = self._card_tag(eid)
         cv = self._canvas
-        fn = EntityCardGrid._font_name
-        fs = EntityCardGrid._font_sub
 
         item["tag_border"] = cv.create_rectangle(
             x1,
@@ -324,7 +321,7 @@ class EntityCardGrid(tk.Frame):
             outline="",
             tags=tag,
         )
-        # Inner background inset by 1 px to show the border color around the edge.
+        # Inner rect inset by 1 px so the border color is visible around the edge.
         item["tag_bg"] = cv.create_rectangle(
             x1 + 1,
             y1 + 1,
@@ -334,8 +331,11 @@ class EntityCardGrid(tk.Frame):
             outline="",
             tags=tag,
         )
-        # Use a smaller font for long names to prevent them overflowing the card.
-        name_font = fn if len(item["name"]) <= 18 else EntityCardGrid._font_name_sm
+        name_font = (
+            EntityCardGrid._font_name
+            if len(item["name"]) <= 18
+            else EntityCardGrid._font_name_sm
+        )
         item["tag_name"] = cv.create_text(
             x1 + _CARD_TEXT_PAD_X,
             y1 + _CARD_NAME_Y,
@@ -346,15 +346,14 @@ class EntityCardGrid(tk.Frame):
             width=cw - _CARD_TEXT_PAD_X * 2,
             tags=tag,
         )
-        labels = _STATUS_LABEL[self.entity_type]
-        status_lbl = labels.get(status, "В ожидании")
+        status_lbl = _STATUS_LABEL[self.entity_type].get(status, "В ожидании")
         if status != "idle":
             item["tag_sub1"] = cv.create_text(
                 x1 + _CARD_TEXT_PAD_X,
                 y1 + _CARD_STATUS_Y_DOUBLE,
                 text=status_lbl,
                 fill=colors["sub"],
-                font=fs,
+                font=EntityCardGrid._font_sub,
                 anchor="w",
                 tags=tag,
             )
@@ -363,7 +362,7 @@ class EntityCardGrid(tk.Frame):
                 y1 + _CARD_TIME_Y,
                 text=item["ts"],
                 fill=colors["sub"],
-                font=fs,
+                font=EntityCardGrid._font_sub,
                 anchor="w",
                 tags=tag,
             )
@@ -373,21 +372,20 @@ class EntityCardGrid(tk.Frame):
                 y1 + _CARD_STATUS_Y_SINGLE,
                 text=status_lbl,
                 fill=colors["sub"],
-                font=fs,
+                font=EntityCardGrid._font_sub,
                 anchor="w",
                 tags=tag,
             )
-            item["tag_sub2"] = None  # not used for idle
+            item["tag_sub2"] = None
 
     def _repaint_card(self, eid: int) -> None:
-        """Update an existing card's colors and text in-place without recreating it."""
+        """Update colors and text of an existing card without recreating its items."""
         item = self._items.get(eid)
         if not item:
             return
         status = item["status"]
         colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
-        labels = _STATUS_LABEL[self.entity_type]
-        status_lbl = labels.get(status, "В ожидании")
+        status_lbl = _STATUS_LABEL[self.entity_type].get(status, "В ожидании")
         cv = self._canvas
 
         cv.itemconfigure(item["tag_border"], fill=colors["border"])
@@ -404,9 +402,8 @@ class EntityCardGrid(tk.Frame):
                 item["tag_sub1"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_STATUS_Y_DOUBLE
             )
             cv.itemconfigure(item["tag_sub1"], text=status_lbl, fill=colors["sub"])
-            # Create the timestamp text item lazily if the card was previously idle.
             if item["tag_sub2"] is None:
-                tag = self._card_tag(eid)
+                # Card was previously idle and had no timestamp item — create it now.
                 item["tag_sub2"] = cv.create_text(
                     x1 + _CARD_TEXT_PAD_X,
                     y1 + _CARD_TIME_Y,
@@ -414,7 +411,7 @@ class EntityCardGrid(tk.Frame):
                     fill=colors["sub"],
                     font=EntityCardGrid._font_sub,
                     anchor="w",
-                    tags=tag,
+                    tags=self._card_tag(eid),
                 )
             else:
                 cv.coords(item["tag_sub2"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_TIME_Y)
@@ -433,22 +430,22 @@ class EntityCardGrid(tk.Frame):
                 cv.itemconfigure(item["tag_sub2"], state="hidden")
 
     def _set_hover(self, eid: int, on: bool) -> None:
-        """Highlight or un-highlight card border."""
         item = self._items.get(eid)
         if not item:
             return
-        status = item["status"]
-        colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
-        border = colors["text"] if on else colors["border"]
-        self._canvas.itemconfigure(item["tag_border"], fill=border)
+        colors = _CARD_STATUS_COLORS.get(item["status"], _CARD_STATUS_COLORS["idle"])
+        self._canvas.itemconfigure(
+            item["tag_border"],
+            fill=colors["text"] if on else colors["border"],
+        )
 
     def _sync_order_index(self) -> None:
-        """Rebuild _idx_to_eid and _eid_to_idx from _order. Call after any reorder."""
+        """Rebuild the position ↔ eid lookup tables from _order."""
         self._idx_to_eid = list(self._order)
         self._eid_to_idx = {eid: idx for idx, eid in enumerate(self._order)}
 
     def populate(self, rows) -> None:
-        """Rebuild the grid from a fresh row set and reset the scroll region."""
+        """Rebuild the entire grid from a fresh row set."""
         self._canvas.delete("all")
         self._items.clear()
         self._order.clear()
@@ -456,19 +453,17 @@ class EntityCardGrid(tk.Frame):
         self._eid_to_idx.clear()
         self._hovered_eid = -1
 
-        rows_list = [dict(r) for r in rows]
-        rows_list.sort(key=lambda r: (r.get("number") or r.get("name") or "").lower())
+        rows_list = sorted(
+            (dict(r) for r in rows),
+            key=lambda r: (r.get("number") or r.get("name") or "").lower(),
+        )
 
         for row in rows_list:
             eid = row["id"]
-            name = row.get("number") or row.get("name", "")
-            status = row.get("status", "idle")
-            raw_ts = row.get("updated") or row.get("created", "")
-            ts = _fmt_timestamp(raw_ts)
             self._items[eid] = {
-                "name": name,
-                "status": status,
-                "ts": ts,
+                "name": row.get("number") or row.get("name", ""),
+                "status": row.get("status", "idle"),
+                "ts": fmt_timestamp(row.get("updated") or row.get("created", "")),
                 "tag_border": None,
                 "tag_bg": None,
                 "tag_name": None,
@@ -480,14 +475,13 @@ class EntityCardGrid(tk.Frame):
         self._sync_order_index()
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-
         self._canvas.after_idle(self._update_scroll_region)
 
     def row_count(self) -> int:
         return len(self._items)
 
     def _rebuild_after_delete(self) -> None:
-        """Redraw all cards from in-memory data after a deletion, without hitting the DB."""
+        """Redraw all cards from in-memory data without re-querying the database."""
         self._canvas.delete("all")
         self._order = sorted(
             self._items.keys(),
@@ -507,7 +501,7 @@ class EntityCardGrid(tk.Frame):
         if not self._order:
             self._update_scroll_region()
             return
-        # Card pixel width depends on canvas width, so a resize forces a full redraw.
+        # Card width depends on canvas width, so a resize forces a full redraw.
         yview = self._canvas.yview()
         self._canvas.delete("all")
         for idx, eid in enumerate(self._order):
@@ -516,7 +510,6 @@ class EntityCardGrid(tk.Frame):
         self._canvas.yview_moveto(yview[0])
 
     def _on_mousewheel(self, event) -> None:
-        # bind_all handler — active only while the cursor is over this canvas.
         delta = event.delta
         units = int(-delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
         self._canvas.yview_scroll(units, "units")
@@ -555,15 +548,13 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        # Cycle arrived → departed → arrived …
-        # "idle" is the creation-only state; if the card is still idle,
-        # the first click moves it to arrived (index 0 of STATUS_ORDER).
         current = item["status"]
         if current in STATUS_ORDER:
-            current_idx = STATUS_ORDER.index(current)
-            new_status = STATUS_ORDER[(current_idx + 1) % len(STATUS_ORDER)]
+            new_status = STATUS_ORDER[
+                (STATUS_ORDER.index(current) + 1) % len(STATUS_ORDER)
+            ]
         else:
-            # status == "idle": first click always goes to arrived
+            # "idle" is not in the cycle — first click always goes to arrived.
             new_status = STATUS_ORDER[0]
         try:
             self.db.update_status_and_log(
@@ -608,10 +599,7 @@ class EntityCardGrid(tk.Frame):
         if not messagebox.askyesno("Удаление", f"Удалить «{item['name']}»?"):
             return
         try:
-            if self.entity_type == "vehicle":
-                self.db.delete_vehicle(eid)
-            else:
-                self.db.delete_commander(eid)
+            self.db.delete_entity(self.entity_type, eid)
         except (DatabaseError, NotFoundError) as exc:
             messagebox.showerror("Ошибка", str(exc))
             return

@@ -12,7 +12,7 @@ from ui.tabs import AccountingTab, HistoryTab, StatsTab
 
 
 class App(ctk.CTk):
-    """Main window of the duty control application."""
+    """Main application window."""
 
     _NAV_ITEMS = [
         ("accounting", "📋", "Учёт"),
@@ -30,12 +30,12 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
-        # Defer until after the initial geometry pass; otherwise winfo_screenwidth()
-        # may return 1 on some platforms.
+        # Defer maximise until after the initial geometry pass;
+        # winfo_screenwidth() can return 1 on some platforms if called too early.
         self.after(0, self._maximize_window)
 
     def _set_icon(self) -> None:
-        """Set the window icon, resolving the path for both dev and frozen modes."""
+        """Set the window icon for both dev and PyInstaller frozen modes."""
         if getattr(sys, "frozen", False):
             base = Path(sys._MEIPASS)
         else:
@@ -62,7 +62,6 @@ class App(ctk.CTk):
                 self.geometry(f"{w}x{h}+0+0")
 
     def _build(self) -> None:
-        """Assemble the top-level layout: header, sidebar, and content area."""
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
@@ -78,7 +77,6 @@ class App(ctk.CTk):
         self._show_tab("accounting")
 
     def _build_header(self) -> None:
-        """Build the top header bar with the app title and live clock."""
         header = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=0, height=54)
         header.grid(row=0, column=0, sticky="ew")
         header.grid_columnconfigure(1, weight=1)
@@ -101,12 +99,11 @@ class App(ctk.CTk):
         self._tick()
 
     def _tick(self) -> None:
-        """Update the clock label every second."""
+        """Update the clock label and reschedule itself every second."""
         self._clock_lbl.configure(text=datetime.now().strftime("%d.%m.%Y  %H:%M:%S"))
         self.after(1000, self._tick)
 
     def _build_sidebar(self, parent: ctk.CTkFrame) -> None:
-        """Build the left navigation sidebar."""
         sidebar = ctk.CTkFrame(
             parent, fg_color=C["surface"], corner_radius=0, width=200
         )
@@ -143,7 +140,7 @@ class App(ctk.CTk):
         ).pack(side="bottom", pady=8)
 
     def _build_content(self, parent: ctk.CTkFrame) -> None:
-        """Create all tab frames, stacked on top of each other in the same grid cell."""
+        """Stack all tab frames in the same grid cell; tkraise() switches between them."""
         content = ctk.CTkFrame(parent, fg_color=C["bg"])
         content.grid(row=0, column=1, sticky="nsew")
         content.grid_rowconfigure(0, weight=1)
@@ -159,11 +156,6 @@ class App(ctk.CTk):
             tab.grid(row=0, column=0, sticky="nsew")
 
     def _show_tab(self, key: str) -> None:
-        """Raise the selected tab and update the sidebar button states.
-
-        Args:
-            key: Tab identifier — one of 'accounting', 'history', 'stats'.
-        """
         self._tabs[key].tkraise()
 
         for k, btn in self._nav_buttons.items():
@@ -172,6 +164,6 @@ class App(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", text_color=C["subtext"])
 
-        # Refresh data-heavy tabs on every visit so they never show stale content.
+        # History and stats tabs are refreshed on every visit to avoid stale data.
         if key in ("history", "stats"):
             self._tabs[key].refresh()
