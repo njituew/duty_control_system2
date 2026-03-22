@@ -275,6 +275,14 @@ class EntityCardGrid(tk.Frame):
         rows = (n + _CARD_COLS - 1) // _CARD_COLS
         return _CARD_PAD + rows * (_CARD_H + _CARD_PAD)
 
+    def _scroll_region_height(self) -> int:
+        """Return the scroll region height: content height, but no less than
+        the visible canvas height.  This prevents the canvas from being
+        scrollable when the content fits entirely on screen."""
+        content_h = self._total_height()
+        canvas_h = self._canvas.winfo_height()
+        return max(content_h, canvas_h if canvas_h > 1 else 0)
+
     def _canvas_coords(self, event) -> tuple[int, int]:
         """Convert a widget-relative mouse event to absolute canvas coordinates."""
         cx = self._canvas.canvasx(event.x)
@@ -476,9 +484,8 @@ class EntityCardGrid(tk.Frame):
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
 
-        total_h = max(self._total_height(), 200)
         self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
+            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
         )
 
     def row_count(self) -> int:
@@ -495,9 +502,8 @@ class EntityCardGrid(tk.Frame):
         self._hovered_eid = -1
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        total_h = self._total_height()
         self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
+            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
         )
 
     def _on_configure(self, event) -> None:
@@ -512,9 +518,8 @@ class EntityCardGrid(tk.Frame):
         self._canvas.delete("all")
         for idx, eid in enumerate(self._order):
             self._draw_card(idx, eid)
-        total_h = max(self._total_height(), 200)
         self._canvas.configure(
-            scrollregion=(0, 0, max(self._canvas_w, 1), max(total_h, 1))
+            scrollregion=(0, 0, max(self._canvas_w, 1), max(self._scroll_region_height(), 1))
         )
         self._canvas.yview_moveto(yview[0])
 
