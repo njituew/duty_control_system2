@@ -1,7 +1,8 @@
 """Application tabs: AccountingTab, HistoryTab, StatsTab."""
 
-import customtkinter as ctk
 from tkinter import messagebox
+
+import customtkinter as ctk
 
 from config import C
 from database import Database, DatabaseError, DuplicateError

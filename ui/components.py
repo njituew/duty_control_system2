@@ -1,12 +1,12 @@
 """Reusable UI components: EntityCardGrid and EventTreeview."""
 
 import tkinter as tk
-import tkinter.ttk as ttk
 import tkinter.font as tkfont
+import tkinter.ttk as ttk
 from datetime import datetime
 from tkinter import messagebox
 
-from config import C, EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS
+from config import EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS, C
 from database import Database, DatabaseError, NotFoundError
 
 

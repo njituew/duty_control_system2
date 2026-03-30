@@ -1,6 +1,7 @@
 """Modal input dialog."""
 
 import customtkinter as ctk
+
 from config import C
 
 
