@@ -24,6 +24,10 @@ def _get_db_path() -> str:
 
 DB_PATH = _get_db_path()
 
+# How many calendar months of event history to keep.
+# Purge runs lazily on every status change.
+EVENT_RETENTION_MONTHS: int = 1
+
 C: dict[str, str] = {
     "bg": "#0f1117",
     "surface": "#1a1d27",

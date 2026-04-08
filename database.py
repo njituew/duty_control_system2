@@ -1,10 +1,11 @@
 """SQLite database access layer."""
 
+import calendar
 import logging
 import sqlite3
 from datetime import datetime
 
-from config import DB_PATH
+from config import DB_PATH, EVENT_RETENTION_MONTHS
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,34 @@ class NotFoundError(DatabaseError):
 
 def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _cutoff_ts(months: int) -> str:
+    """Return the ISO-8601 timestamp exactly months calendar months ago.
+
+    Uses calendar arithmetic instead of timedelta(days=N) to handle
+    year rollovers and months with different day counts correctly.
+
+    Events with ts < cutoff are considered expired and will be deleted.
+    """
+    now = datetime.now()
+
+    # Roll back the month counter, adjusting the year when we cross January.
+    month = now.month - months
+    year = now.year
+    while month <= 0:
+        month += 12
+        year -= 1
+
+    # Clamp the day to the last valid day of the target month.
+    # Example: today is March 31, target is February → clamp to Feb 28/29.
+    last_day_of_target = calendar.monthrange(year, month)[1]
+    day = min(now.day, last_day_of_target)
+
+    cutoff = now.replace(
+        year=year, month=month, day=day, hour=0, minute=0, second=0, microsecond=0
+    )
+    return cutoff.strftime("%Y-%m-%d %H:%M:%S")
 
 
 # Whitelist for table names used in dynamic SQL — prevents injection in _migrate.
@@ -73,6 +102,7 @@ class Database:
                 event_type  TEXT    NOT NULL,
                 ts          TEXT    NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
             """
         )
 
@@ -159,6 +189,18 @@ class Database:
             (entity_type, entity_id, entity_name, event_type, _now()),
         )
 
+    def _purge_old_events(self) -> None:
+        """Delete events older than EVENT_RETENTION_MONTHS calendar months.
+
+        Uses calendar arithmetic (see _cutoff_ts) so year rollovers and
+        months with different day counts are handled correctly.
+        Runs without its own commit — the caller commits the surrounding
+        transaction, so the purge and the new event are atomic.
+        """
+        cutoff = _cutoff_ts(EVENT_RETENTION_MONTHS)
+        self._conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+        logger.debug("Event purge: removed rows with ts < %s", cutoff)
+
     # Vehicles
 
     def add_vehicle(self, number: str) -> int:
@@ -211,6 +253,9 @@ class Database:
         Both the UPDATE and the event INSERT share one timestamp so the
         'updated' column and the event log stay in sync.
 
+        Also lazily purges event rows older than EVENT_RETENTION_MONTHS within
+        the same transaction, so the purge and the new write are always atomic.
+
         Raises:
             ValueError:    For unknown entity_type or status values.
             DatabaseError: On any SQLite error.
@@ -231,6 +276,7 @@ class Database:
                 "VALUES (?, ?, ?, ?, ?)",
                 (entity_type, entity_id, entity_name, status, ts),
             )
+            self._purge_old_events()
             self._conn.commit()
         except sqlite3.Error as e:
             self._conn.rollback()
