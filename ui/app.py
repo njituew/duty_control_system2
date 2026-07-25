@@ -1,8 +1,10 @@
 """Root application window."""
 
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from tkinter import TclError
+from typing import ClassVar
 
 import customtkinter as ctk
 
@@ -14,7 +16,7 @@ from ui.tabs import AccountingTab, HistoryTab, StatsTab
 class App(ctk.CTk):
     """Main application window."""
 
-    _NAV_ITEMS = [
+    _NAV_ITEMS: ClassVar[list[tuple[str, str, str]]] = [
         ("accounting", "📋", "Учёт"),
         ("history", "🕒", "История"),
         ("stats", "📊", "Статистика"),
@@ -56,7 +58,7 @@ class App(ctk.CTk):
         else:
             try:
                 self.state("zoomed")
-            except Exception:
+            except TclError:
                 w = self.winfo_screenwidth()
                 h = self.winfo_screenheight()
                 self.geometry(f"{w}x{h}+0+0")
@@ -100,7 +102,9 @@ class App(ctk.CTk):
 
     def _tick(self) -> None:
         """Update the clock label and reschedule itself every second."""
-        self._clock_lbl.configure(text=datetime.now().strftime("%d.%m.%Y  %H:%M:%S"))
+        self._clock_lbl.configure(
+            text=datetime.now(timezone.utc).astimezone().strftime("%d.%m.%Y  %H:%M:%S")
+        )
         self.after(1000, self._tick)
 
     def _build_sidebar(self, parent: ctk.CTkFrame) -> None:

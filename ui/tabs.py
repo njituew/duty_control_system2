@@ -1,6 +1,7 @@
 """Application tabs: AccountingTab, HistoryTab, StatsTab."""
 
 from tkinter import messagebox
+from typing import ClassVar
 
 import customtkinter as ctk
 
@@ -254,7 +255,7 @@ class HistoryTab(ctk.CTkFrame):
 class StatsTab(ctk.CTkFrame):
     """Aggregate statistics tab with a recent-activity feed."""
 
-    _STAT_CARDS = [
+    _STAT_CARDS: ClassVar[list[tuple[str, str, str]]] = [
         ("ТС", "vehicles", "accent"),
         ("Командиров", "commanders", "green"),
         ("Прибытий", "arrivals", "green"),

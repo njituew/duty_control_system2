@@ -3,7 +3,7 @@
 import calendar
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import DB_PATH, EVENT_RETENTION_MONTHS
 
@@ -23,7 +23,7 @@ class NotFoundError(DatabaseError):
 
 
 def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _cutoff_ts(months: int) -> str:
@@ -34,7 +34,7 @@ def _cutoff_ts(months: int) -> str:
 
     Events with ts < cutoff are considered expired and will be deleted.
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc).astimezone()
 
     # Roll back the month counter, adjusting the year when we cross January.
     month = now.month - months
