@@ -2,10 +2,11 @@
 
 import calendar
 import logging
+import re
 import sqlite3
 from datetime import datetime, timezone
 
-from config import DB_PATH, EVENT_RETENTION_MONTHS
+from config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,51 @@ class Database:
     def get_vehicles(self, search: str = "") -> list[sqlite3.Row]:
         """Return vehicles whose number contains the search substring."""
         return self._get_entities("vehicle", search)
+
+    def _normalize_number(self, number: str) -> str:
+        """Return the digits-only form of a vehicle number for matching."""
+        return "".join(re.findall(r"\d+", number))
+
+    def find_vehicle_by_number(self, number: str) -> sqlite3.Row | None:
+        """Return the vehicle whose normalized number matches the provided value."""
+        normalized_target = self._normalize_number(number)
+        if not normalized_target:
+            return None
+        try:
+            rows = self._conn.execute("SELECT * FROM vehicles").fetchall()
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Failed to look up vehicle: {e}") from e
+
+        for row in rows:
+            if self._normalize_number(row["number"]) == normalized_target:
+                return row
+        return None
+
+    def toggle_vehicle_status_by_number(self, number: str) -> sqlite3.Row | None:
+        """Flip a vehicle's status between arrived/departed by exact number match.
+
+        Mirrors the manual card-click cycle: a vehicle outside STATUS_ORDER
+        (i.e. 'idle') moves to the first status in the cycle on first match.
+
+        Returns:
+            The updated vehicle row, or None if no vehicle with this number exists.
+        """
+        vehicle = self.find_vehicle_by_number(number)
+        if vehicle is None:
+            return None
+
+        current = vehicle["status"]
+        if current in STATUS_ORDER:
+            new_status = STATUS_ORDER[
+                (STATUS_ORDER.index(current) + 1) % len(STATUS_ORDER)
+            ]
+        else:
+            new_status = STATUS_ORDER[0]
+
+        self.update_status_and_log(
+            "vehicle", vehicle["id"], vehicle["number"], new_status
+        )
+        return self.find_vehicle_by_number(number)
 
     # Commanders
 

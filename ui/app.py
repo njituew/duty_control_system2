@@ -1,5 +1,7 @@
 """Root application window."""
 
+import logging
+import queue
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,9 +10,19 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
-from config import C
-from database import Database
+from config import (
+    CAMERA_EVENT_CODES,
+    CAMERA_HOST,
+    CAMERA_PASSWORD,
+    CAMERA_QUEUE_POLL_MS,
+    CAMERA_USER,
+    C,
+)
+from database import Database, DatabaseError
+from integration.camera_client import CameraListener
 from ui.tabs import AccountingTab, HistoryTab, StatsTab
+
+logger = logging.getLogger(__name__)
 
 
 class App(ctk.CTk):
@@ -32,6 +44,8 @@ class App(ctk.CTk):
 
         self.db = Database()
         self._build()
+        self._start_camera_listener()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         # Defer maximise until after the initial geometry pass;
         # winfo_screenwidth() can return 1 on some platforms if called too early.
         self.after(0, self._maximize_window)
@@ -171,3 +185,56 @@ class App(ctk.CTk):
         # History and stats tabs are refreshed on every visit to avoid stale data.
         if key in ("history", "stats"):
             self._tabs[key].refresh()
+
+    def _start_camera_listener(self) -> None:
+        """Start the camera listener thread and begin polling its event queue."""
+        if not CAMERA_HOST:
+            logger.info("Camera integration is disabled")
+            return
+        self._camera_queue: queue.Queue[str] = queue.Queue()
+        self._camera_listener = CameraListener(
+            host=CAMERA_HOST,
+            user=CAMERA_USER,
+            password=CAMERA_PASSWORD,
+            codes=CAMERA_EVENT_CODES,
+            event_queue=self._camera_queue,
+        )
+        self._camera_listener.start()
+        logger.info("Camera listener started on %s", CAMERA_HOST)
+        self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
+
+    def _poll_camera_queue(self) -> None:
+        """Drain recognised plate numbers and toggle matching vehicles' status."""
+        changed = False
+        while True:
+            try:
+                number = self._camera_queue.get_nowait()
+            except queue.Empty:
+                break
+            logger.info("Processing camera event for number=%s", number)
+            try:
+                vehicle = self.db.toggle_vehicle_status_by_number(number)
+            except DatabaseError:
+                logger.exception("Failed to update vehicle status from camera event")
+                continue
+            if vehicle is not None:
+                changed = True
+                logger.info(
+                    "Vehicle %s status updated to %s",
+                    number,
+                    vehicle["status"],
+                )
+            else:
+                logger.info(
+                    "Camera saw plate %s, no matching vehicle in database", number
+                )
+
+        if changed:
+            self._tabs["accounting"].refresh()
+
+        self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
+
+    def _on_close(self) -> None:
+        if hasattr(self, "_camera_listener"):
+            self._camera_listener.stop()
+        self.destroy()

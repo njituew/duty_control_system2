@@ -28,6 +28,19 @@ DB_PATH = _get_db_path()
 # Purge runs lazily on every status change.
 EVENT_RETENTION_MONTHS: int = 1
 
+# Camera (ANPR) integration. Credentials live in camera_settings.py, which is
+# gitignored -- copy that file manually to any new machine.
+try:
+    from camera_settings import CAMERA_HOST, CAMERA_PASSWORD, CAMERA_USER
+except ImportError:
+    CAMERA_HOST = CAMERA_USER = CAMERA_PASSWORD = ""
+
+# Event codes to subscribe to via eventManager.cgi?action=attach.
+CAMERA_EVENT_CODES: list[str] = ["TrafficJunction"]
+
+# How often the UI checks the camera event queue, in milliseconds.
+CAMERA_QUEUE_POLL_MS: int = 500
+
 C: dict[str, str] = {
     "bg": "#0f1117",
     "surface": "#1a1d27",
