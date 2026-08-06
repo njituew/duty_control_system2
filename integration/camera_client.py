@@ -1,8 +1,8 @@
-"""Background client for the Dahua ANPR camera event stream.
+"""Фоновый клиент для потока событий камеры Dahua ANPR.
 
-Connects to eventManager.cgi?action=attach and keeps the connection open,
-parsing the multipart event stream for recognised plate numbers and pushing
-the normalised main number of each one onto a queue for the UI to consume.
+Подключается к eventManager.cgi?action=attach и поддерживает соединение открытым,
+анализируя мультипартный поток событий для распознанных номерных знаков и помещая
+нормализованный основной номер каждого из них в очередь для использования интерфейсом.
 """
 
 import json
@@ -25,23 +25,20 @@ _MAX_RECONNECT_DELAY = 60
 
 
 def normalize_plate(plate: str) -> str | None:
-    """Extract the main number from a plate string, e.g. 'PC0097' -> '0097'.
-
-    Belarusian plates carry letters plus a digit block; only the digits are
-    used to match vehicles in the database. Returns None if no digits found.
+    """Извлекает основной номер из строки номера, например 'PC0097' -> '0097'.
+    Возвращает None, если цифры не найдены.
     """
     match = re.search(r"\d+", plate)
     return match.group(0) if match else None
 
 
 def _extract_plate(body: bytes) -> str | None:
-    """Pull TrafficCar.PlateNumber out of one multipart event body.
-
-    Each part may be either raw JSON or a wrapper containing data=<json>.
+    """Извлекает TrafficCar.PlateNumber из одного тела мультипартного события.
+    Каждая часть может быть либо сырым JSON, либо обёрткой, содержащей data=<json>.
     """
     text = body.decode("utf-8", errors="ignore").strip()
     if not text:
-        logger.debug("Empty camera event body")
+        logger.debug("Пустое тело события камеры")
         return None
 
     if "data=" in text:
@@ -54,15 +51,12 @@ def _extract_plate(body: bytes) -> str | None:
     if brace_start != -1:
         json_text = json_text[brace_start:]
 
-    # Some camera/emulator payloads append non-JSON trailer text after the
-    # actual object, especially in multipart streams. Try exact JSON parse first,
-    # and fall back to plate-number extraction if the object is otherwise valid.
     try:
         payload, _ = json.JSONDecoder().raw_decode(json_text)
         return payload.get("TrafficCar", {}).get("PlateNumber")
     except json.JSONDecodeError as exc:
         logger.debug(
-            "Malformed camera event JSON, trying regex fallback: %s; body=%r",
+            "Некорректный JSON события камеры, пробуем запасной вариант через регулярное выражение: %s; тело=%r",
             exc,
             json_text[:300],
         )
@@ -70,23 +64,22 @@ def _extract_plate(body: bytes) -> str | None:
     match = _PLATE_NUMBER_RE.search(json_text)
     if match:
         plate = match.group(1)
-        logger.info("Extracted plate from malformed JSON payload: %s", plate)
+        logger.info("Извлечён номер из некорректного JSON: %s", plate)
         return plate
 
     logger.warning(
-        "Malformed camera event JSON, skipping: %s; body=%r",
-        exc,
+        "Некорректный JSON события камеры, пропускаем; тело=%r",
         json_text[:300],
     )
     return None
 
 
 class CameraListener:
-    """Runs the camera connection on a background thread.
+    """Запускает соединение с камерой в фоновом потоке.
 
-    Reconnects with exponential backoff on any network failure. Recognised
-    plate numbers (already normalised to their main digits) are put onto
-    `event_queue`; the caller reads them from the main thread via `.after()`.
+    Переподключается с задержкой при любом сетевом сбое.
+    Распознанные номера (уже нормализованные до основных цифр) помещаются в
+    `event_queue`; вызывающий код читает их из главного потока через `.after()`.
     """
 
     def __init__(
@@ -107,13 +100,13 @@ class CameraListener:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
-        """Start the background listener thread."""
-        logger.info("Starting camera listener thread for host=%s", self._host)
+        """Запускает фоновый поток-слушатель."""
+        logger.info("Запуск потока слушателя камеры для host=%s", self._host)
         self._thread.start()
 
     def stop(self) -> None:
-        """Signal the listener to stop and let the thread exit."""
-        logger.info("Stopping camera listener thread")
+        """Сигнализирует слушателю об остановке и позволяет потоку завершиться."""
+        logger.info("Остановка потока слушателя камеры")
         self._stop_event.set()
 
     def _attach_url(self) -> str:
@@ -125,15 +118,15 @@ class CameraListener:
         while not self._stop_event.is_set():
             try:
                 self._listen_once()
-                delay = _MIN_RECONNECT_DELAY  # connection was healthy, reset backoff
+                delay = _MIN_RECONNECT_DELAY  # сброс задержки
             except requests.RequestException as exc:
                 logger.warning(
-                    "Camera connection failed (%s), retrying in %ss",
+                    "Ошибка подключения к камере (%s), повтор через %s с",
                     exc,
                     delay,
                 )
             except Exception:
-                logger.exception("Unexpected error in camera listener")
+                logger.exception("Неожиданная ошибка в слушателе камеры")
             if self._stop_event.wait(delay):
                 return
             delay = min(delay * 2, _MAX_RECONNECT_DELAY)
@@ -146,7 +139,7 @@ class CameraListener:
             timeout=(self._timeout, None),
         )
         response.raise_for_status()
-        logger.info("Camera connected to %s", self._attach_url())
+        logger.info("Камера подключена к %s", self._attach_url())
         boundary = self._resolve_boundary(response.headers.get("Content-Type", ""))
 
         buffer = b""
@@ -174,7 +167,7 @@ class CameraListener:
         return f"--{boundary}".encode()
 
     def _consume_parts(self, buffer: bytes, boundary: bytes) -> bytes:
-        """Pull out every complete part from buffer, return the unparsed tail."""
+        """Извлекает каждую завершённую часть из буфера, возвращает необработанный хвост."""
         while True:
             start = buffer.find(boundary)
             if start == -1:
@@ -183,7 +176,7 @@ class CameraListener:
             headers_start = start + len(boundary)
             headers_end = buffer.find(b"\r\n\r\n", headers_start)
             if headers_end == -1:
-                return buffer  # headers not fully received yet
+                return buffer  # заголовки ещё не получены полностью
 
             header_block = buffer[headers_start:headers_end]
             length_match = _CONTENT_LENGTH_RE.search(header_block)
@@ -193,12 +186,12 @@ class CameraListener:
                 body_length = int(length_match.group(1))
                 body_end = body_start + body_length
                 if len(buffer) < body_end:
-                    return buffer  # body not fully received yet
+                    return buffer  # тело ещё не получено полностью
                 self._handle_part(buffer[body_start:body_end])
                 buffer = buffer[body_end:]
                 continue
 
-            # Fallback when Content-Length is not available.
+            # Запасной вариант, если Content-Length отсутствует.
             next_boundary = buffer.find(boundary, body_start)
             if next_boundary == -1:
                 return buffer
@@ -211,11 +204,11 @@ class CameraListener:
     def _handle_part(self, body: bytes) -> None:
         plate = _extract_plate(body)
         if not plate:
-            logger.debug("Camera event part contained no plate number")
+            logger.debug("Часть события камеры не содержала номерного знака")
             return
         number = normalize_plate(plate)
         if number:
-            logger.info("Plate seen: %s -> %s", plate, number)
+            logger.info("Номер обнаружен: %s -> %s", plate, number)
             self._queue.put(number)
         else:
-            logger.warning("Plate contains no digits: %s", plate)
+            logger.warning("Номер не содержит цифр: %s", plate)
