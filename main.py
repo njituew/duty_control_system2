@@ -1,5 +1,3 @@
-"""Точка входа в приложение."""
-
 import logging
 
 from ui.app import App
