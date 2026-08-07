@@ -140,10 +140,12 @@ class Database:
             self._conn.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
+            self._conn.rollback()
             raise DuplicateError(
                 f"{entity_type.capitalize()} '{value}' already exists."
             )
         except sqlite3.Error as e:
+            self._conn.rollback()
             raise DatabaseError(f"Failed to add {entity_type}: {e}") from e
 
     def _delete_entity(self, entity_type: str, eid: int) -> None:
