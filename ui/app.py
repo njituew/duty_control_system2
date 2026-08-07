@@ -158,7 +158,7 @@ class App(ctk.CTk):
             self._nav_buttons[key] = btn
 
     def _build_content(self, parent: ctk.CTkFrame) -> None:
-        """Сложить все вкладки в одну ячейку; tkraise() переключает их."""
+        """Сложить все вкладки в одну ячейку; переключает их _show_tab()."""
         content = ctk.CTkFrame(parent, fg_color=C["bg"])
         content.grid(row=0, column=1, sticky="nsew")
         content.grid_rowconfigure(0, weight=1)
@@ -171,11 +171,17 @@ class App(ctk.CTk):
             "settings": SettingsTab(content, self),
         }
 
-        for tab in self._tabs.values():
+        for key, tab in self._tabs.items():
             tab.grid(row=0, column=0, sticky="nsew")
+            if key != "accounting":
+                tab.grid_remove()
 
     def _show_tab(self, key: str) -> None:
-        self._tabs[key].tkraise()
+        for k, tab in self._tabs.items():
+            if k == key:
+                tab.grid(row=0, column=0, sticky="nsew")
+            else:
+                tab.grid_remove()
 
         for k, btn in self._nav_buttons.items():
             if k == key:

@@ -182,6 +182,8 @@ _CARD_STATUS_Y_SINGLE = 54  # Y строки статуса, когда стро
 _CARD_STATUS_Y_DOUBLE = 46  # Y строки статуса, когда ниже идёт время
 _CARD_TIME_Y = 62  # Y строки времени
 
+_RESIZE_DEBOUNCE_MS = 40
+
 
 class EntityCardGrid(tk.Frame):
     """Интерактивная сетка карточек на скроллируемом tk.Canvas.
@@ -503,6 +505,41 @@ class EntityCardGrid(tk.Frame):
             self._draw_card(idx, eid)
         self._canvas.after_idle(self._update_scroll_region)
 
+    def _relayout(self) -> None:
+        """Переставить карточки под текущую ширину canvas без пересоздания элементов."""
+        self._relayout_job = None
+        if not self._order:
+            self._update_scroll_region()
+            return
+
+        yview = self._canvas.yview()
+        cw = self._cell_w()
+        cv = self._canvas
+        for idx, eid in enumerate(self._order):
+            item = self._items.get(eid)
+            if not item:
+                continue
+            x1, y1, x2, y2 = self._card_rect(idx)
+            cv.coords(item["tag_border"], x1, y1, x2, y2)
+            cv.coords(item["tag_bg"], x1 + 1, y1 + 1, x2 - 1, y2 - 1)
+            cv.coords(item["tag_name"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_NAME_Y)
+            cv.itemconfigure(item["tag_name"], width=max(cw - _CARD_TEXT_PAD_X * 2, 1))
+            if item.get("tag_sub2") is not None:
+                cv.coords(
+                    item["tag_sub1"],
+                    x1 + _CARD_TEXT_PAD_X,
+                    y1 + _CARD_STATUS_Y_DOUBLE,
+                )
+                cv.coords(item["tag_sub2"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_TIME_Y)
+            else:
+                cv.coords(
+                    item["tag_sub1"],
+                    x1 + _CARD_TEXT_PAD_X,
+                    y1 + _CARD_STATUS_Y_SINGLE,
+                )
+        self._update_scroll_region()
+        self._canvas.yview_moveto(yview[0])
+
     def _on_configure(self, event) -> None:
         new_w = event.width
         if new_w == self._canvas_w:
@@ -511,13 +548,12 @@ class EntityCardGrid(tk.Frame):
         if not self._order:
             self._update_scroll_region()
             return
-        # Ширина карточки зависит от ширины canvas, поэтому при ресайзе — полная перерисовка.
-        yview = self._canvas.yview()
-        self._canvas.delete("all")
-        for idx, eid in enumerate(self._order):
-            self._draw_card(idx, eid)
-        self._update_scroll_region()
-        self._canvas.yview_moveto(yview[0])
+        # Поток <Configure> идёт дольше, чем нравится событию; планируем один
+        # relayout, и он выполнится с уже обновлённой _canvas_w. Повторные
+        # события ресайза не порождают новых задач — только приподнимают флаг.
+        if getattr(self, "_relayout_job", None) is not None:
+            return
+        self._relayout_job = self._canvas.after(_RESIZE_DEBOUNCE_MS, self._relayout)
 
     def _on_mousewheel(self, event) -> None:
         delta = event.delta
