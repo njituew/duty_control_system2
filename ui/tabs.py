@@ -1,4 +1,4 @@
-"""Application tabs: AccountingTab, HistoryTab, StatsTab."""
+"""Вкладки приложения: AccountingTab, HistoryTab, StatsTab."""
 
 from tkinter import messagebox
 from typing import ClassVar
@@ -13,9 +13,9 @@ from ui.dialogs import InputDialog
 
 
 class _EntitySection(ctk.CTkFrame):
-    """Toolbar + search field + card grid for a single entity type.
+    """Панель сущности одного типа: тулбар, поиск и сетка карточек.
 
-    Used as one half of AccountingTab (vehicles on the left, commanders on the right).
+    Используется как половина AccountingTab (ТС слева, командиры справа).
     """
 
     def __init__(
@@ -123,7 +123,7 @@ class _EntitySection(ctk.CTkFrame):
 
 
 class AccountingTab(ctk.CTkFrame):
-    """Two-column accounting tab: vehicles on the left, commanders on the right."""
+    """Двухколоночная вкладка учёта: ТС слева, командиры справа."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -167,7 +167,7 @@ class AccountingTab(ctk.CTkFrame):
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Event log tab with search and clear controls."""
+    """Вкладка журнала событий с поиском и очисткой."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -255,7 +255,7 @@ class HistoryTab(ctk.CTkFrame):
 
 
 class StatsTab(ctk.CTkFrame):
-    """Aggregate statistics tab with a recent-activity feed."""
+    """Вкладка агрегированной статистики и последних событий."""
 
     _STAT_CARDS: ClassVar[list[tuple[str, str, str]]] = [
         ("ТС", "vehicles", "accent"),
@@ -335,7 +335,7 @@ class StatsTab(ctk.CTkFrame):
             border_color=C["border"],
         )
         frame.grid(row=0, column=col, padx=6, pady=4, sticky="ew")
-        # Each card column gets equal weight so they share available width evenly.
+        # Равные веса колонок, чтобы карточки делили ширину поровну.
         parent.grid_columnconfigure(col, weight=1)
 
         ctk.CTkLabel(
@@ -363,7 +363,7 @@ class StatsTab(ctk.CTkFrame):
 
 
 class SettingsTab(ctk.CTkFrame):
-    """Camera connection settings: host, credentials, and a connect button."""
+    """Настройки подключения к камере: хост, учётные данные и кнопка подключения."""
 
     def __init__(self, master, app, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -522,9 +522,7 @@ class SettingsTab(ctk.CTkFrame):
             self._user_entry.get(),
             self._password_entry.get(),
         ):
-            self._status_lbl.configure(
-                text="●  Подключено", text_color=C["green"]
-            )
+            self._status_lbl.configure(text="●  Подключено", text_color=C["green"])
 
     def _on_disconnect(self) -> None:
         self._app.disconnect_camera()

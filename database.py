@@ -1,4 +1,4 @@
-"""SQLite database access layer."""
+"""Слой доступа к базе данных SQLite."""
 
 import calendar
 import logging
@@ -12,15 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseError(Exception):
-    """Base exception for all database-layer errors."""
+    """Базовое исключение для ошибок слоя БД."""
 
 
 class DuplicateError(DatabaseError):
-    """Raised when a record with the same name or number already exists."""
+    """Возникает, когда запись с таким именем или номером уже существует."""
 
 
 class NotFoundError(DatabaseError):
-    """Raised when a requested record does not exist."""
+    """Возникает, когда запрашиваемая запись не существует."""
 
 
 def _now() -> str:
@@ -28,24 +28,20 @@ def _now() -> str:
 
 
 def _cutoff_ts(months: int) -> str:
-    """Return the ISO-8601 timestamp exactly months calendar months ago.
+    """Вернуть метку времени ровно months календарных месяцев назад.
 
-    Uses calendar arithmetic instead of timedelta(days=N) to handle
-    year rollovers and months with different day counts correctly.
-
-    Events with ts < cutoff are considered expired and will be deleted.
+    События с ts < cutoff считаются устаревшими и удаляются.
     """
     now = datetime.now(timezone.utc).astimezone()
 
-    # Roll back the month counter, adjusting the year when we cross January.
+    # Уменьшаем месяц, перенося год назад при переходе через январь.
     month = now.month - months
     year = now.year
     while month <= 0:
         month += 12
         year -= 1
 
-    # Clamp the day to the last valid day of the target month.
-    # Example: today is March 31, target is February → clamp to Feb 28/29.
+    # Ограничиваем день последним числом целевого месяца.
     last_day_of_target = calendar.monthrange(year, month)[1]
     day = min(now.day, last_day_of_target)
 
@@ -55,15 +51,15 @@ def _cutoff_ts(months: int) -> str:
     return cutoff.strftime("%Y-%m-%d %H:%M:%S")
 
 
-# Whitelist for table names used in dynamic SQL — prevents injection in _migrate.
+# Белый список имён таблиц для динамического SQL — защита от инъекций в _migrate.
 _ALLOWED_TABLES: frozenset[str] = frozenset({"vehicles", "commanders"})
 
 
 class Database:
-    """Thin wrapper around a SQLite connection.
+    """Тонкая обёртка над SQLite-соединением.
 
-    All writes go through transaction and event-logging machinery in the public
-    methods. Callers must not access _conn directly.
+    Все записи проходят через транзакции и журнал событий в публичных
+    методах. Вызывающий код не должен обращаться к _conn напрямую.
     """
 
     def __init__(self, path: str = DB_PATH):
@@ -78,7 +74,7 @@ class Database:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
     def _migrate(self) -> None:
-        """Create tables on first run and add any missing columns."""
+        """Создать таблицы при первом запуске и добавить недостающие колонки."""
         self._conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
@@ -107,7 +103,7 @@ class Database:
             """
         )
 
-        # Backfill 'updated' column for databases created before it was added.
+        # Добавляем колонку 'updated' для БД, созданных до её введения.
         for table in ("vehicles", "commanders"):
             if table not in _ALLOWED_TABLES:
                 raise ValueError(f"Unexpected table name in migration: {table!r}")
@@ -122,7 +118,7 @@ class Database:
 
     @staticmethod
     def _entity_table(entity_type: str) -> tuple[str, str]:
-        """Return (table_name, name_column) for the given entity type string."""
+        """Вернуть (имя_таблицы, колонка_имени) для строки типа сущности."""
         if entity_type == "vehicle":
             return "vehicles", "number"
         if entity_type == "commander":
@@ -130,7 +126,7 @@ class Database:
         raise ValueError(f"Unknown entity type: {entity_type!r}")
 
     def _add_entity(self, entity_type: str, value: str) -> int:
-        """Insert a new entity row and return its generated id."""
+        """Вставить новую сущность и вернуть её сгенерированный id."""
         table, col = self._entity_table(entity_type)
         value = value.strip()
         if not value:
@@ -151,7 +147,7 @@ class Database:
             raise DatabaseError(f"Failed to add {entity_type}: {e}") from e
 
     def _delete_entity(self, entity_type: str, eid: int) -> None:
-        """Delete an entity by id and write a 'deleted' event."""
+        """Удалить сущность по id и записать событие 'deleted'."""
         table, col = self._entity_table(entity_type)
         try:
             row = self._conn.execute(
@@ -170,7 +166,7 @@ class Database:
             raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
 
     def _get_entities(self, entity_type: str, search: str = "") -> list[sqlite3.Row]:
-        """Return entities filtered by a search substring, ordered by name."""
+        """Вернуть сущности по подстроке поиска, отсортированные по имени."""
         table, col = self._entity_table(entity_type)
         try:
             return self._conn.execute(
@@ -183,7 +179,7 @@ class Database:
     def _log(
         self, entity_type: str, entity_id: int, entity_name: str, event_type: str
     ) -> None:
-        """Append an event row without committing — caller is responsible for commit."""
+        """Записать событие без коммита — коммит выполняет вызывающий код."""
         self._conn.execute(
             "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -191,37 +187,35 @@ class Database:
         )
 
     def _purge_old_events(self) -> None:
-        """Delete events older than EVENT_RETENTION_MONTHS calendar months.
+        """Удалить события старше EVENT_RETENTION_MONTHS календарных месяцев.
 
-        Uses calendar arithmetic (see _cutoff_ts) so year rollovers and
-        months with different day counts are handled correctly.
-        Runs without its own commit — the caller commits the surrounding
-        transaction, so the purge and the new event are atomic.
+        Выполняется без собственного коммита — вызывающий код коммитит
+        окружающую транзакцию, поэтому очистка и новое событие атомарны.
         """
         cutoff = _cutoff_ts(EVENT_RETENTION_MONTHS)
         self._conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
         logger.debug("Event purge: removed rows with ts < %s", cutoff)
 
-    # Vehicles
+    # ТС
 
     def add_vehicle(self, number: str) -> int:
-        """Insert a new vehicle and return its generated id."""
+        """Добавить ТС и вернуть его сгенерированный id."""
         return self._add_entity("vehicle", number)
 
     def delete_vehicle(self, vid: int) -> None:
-        """Delete a vehicle by id."""
+        """Удалить ТС по id."""
         self._delete_entity("vehicle", vid)
 
     def get_vehicles(self, search: str = "") -> list[sqlite3.Row]:
-        """Return vehicles whose number contains the search substring."""
+        """Вернуть ТС, номер которых содержит подстроку поиска."""
         return self._get_entities("vehicle", search)
 
     def _normalize_number(self, number: str) -> str:
-        """Return the digits-only form of a vehicle number for matching."""
+        """Вернуть только цифры номера ТС для сопоставления."""
         return "".join(re.findall(r"\d+", number))
 
     def find_vehicle_by_number(self, number: str) -> sqlite3.Row | None:
-        """Return the vehicle whose normalized number matches the provided value."""
+        """Вернуть ТС с совпадающим нормализованным номером."""
         normalized_target = self._normalize_number(number)
         if not normalized_target:
             return None
@@ -236,13 +230,13 @@ class Database:
         return None
 
     def toggle_vehicle_status_by_number(self, number: str) -> sqlite3.Row | None:
-        """Flip a vehicle's status between arrived/departed by exact number match.
+        """Переключить статус ТС между arrived/departed по точному номеру.
 
-        Mirrors the manual card-click cycle: a vehicle outside STATUS_ORDER
-        (i.e. 'idle') moves to the first status in the cycle on first match.
+        Повторяет цикл кликов по карточке: ТС вне STATUS_ORDER (т.е. 'idle')
+        при первом совпадении переходит в первый статус цикла.
 
-        Returns:
-            The updated vehicle row, or None if no vehicle with this number exists.
+        Возвращает:
+            Обновлённую строку ТС или None, если ТС с таким номером нет.
         """
         vehicle = self.find_vehicle_by_number(number)
         if vehicle is None:
@@ -261,50 +255,48 @@ class Database:
         )
         return self.find_vehicle_by_number(number)
 
-    # Commanders
+    # Командиры
 
     def add_commander(self, name: str) -> int:
-        """Insert a new commander and return his generated id."""
+        """Добавить командира и вернуть его сгенерированный id."""
         return self._add_entity("commander", name)
 
     def delete_commander(self, cid: int) -> None:
-        """Delete a commander by id."""
+        """Удалить командира по id."""
         self._delete_entity("commander", cid)
 
     def get_commanders(self, search: str = "") -> list[sqlite3.Row]:
-        """Return commanders whose name contains the search substring."""
+        """Вернуть командиров, имя которых содержит подстроку поиска."""
         return self._get_entities("commander", search)
 
-    # Generic — used by UI components that receive entity_type as a string
+    # Общие — используются UI-компонентами, получающими entity_type строкой
 
     def add_entity(self, entity_type: str, value: str) -> int:
-        """Add a vehicle or commander by type string and return its id."""
+        """Добавить ТС или командира по строке типа и вернуть id."""
         return self._add_entity(entity_type, value)
 
     def delete_entity(self, entity_type: str, eid: int) -> None:
-        """Delete a vehicle or commander by type string and id."""
+        """Удалить ТС или командира по строке типа и id."""
         self._delete_entity(entity_type, eid)
 
     def get_entities(self, entity_type: str, search: str = "") -> list[sqlite3.Row]:
-        """Return vehicles or commanders filtered by search substring."""
+        """Вернуть ТС или командиров по подстроке поиска."""
         return self._get_entities(entity_type, search)
 
-    # Status
+    # Статус
 
     def update_status_and_log(
         self, entity_type: str, entity_id: int, entity_name: str, status: str
     ) -> None:
-        """Update entity status and write the event in a single transaction.
+        """Обновить статус сущности и записать событие в одной транзакции.
 
-        Both the UPDATE and the event INSERT share one timestamp so the
-        'updated' column and the event log stay in sync.
-
-        Also lazily purges event rows older than EVENT_RETENTION_MONTHS within
-        the same transaction, so the purge and the new write are always atomic.
+        Обновление и событие используют одну метку времени, поэтому колонка
+        'updated' и журнал событий синхронны. В той же транзакции лениво
+        удаляются устаревшие события, так что очистка и запись атомарны.
 
         Raises:
-            ValueError:    For unknown entity_type or status values.
-            DatabaseError: On any SQLite error.
+            ValueError:    При неизвестных entity_type или status.
+            DatabaseError: При любой ошибке SQLite.
         """
         table, _ = self._entity_table(entity_type)
 
@@ -328,10 +320,10 @@ class Database:
             self._conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
 
-    # Events
+    # События
 
     def get_events(self, search: str = "", limit: int = 300) -> list[sqlite3.Row]:
-        """Return events filtered by a search string, newest first."""
+        """Вернуть события по подстроке поиска, новые сверху."""
         try:
             q = f"%{search.strip()}%"
             return self._conn.execute(
@@ -347,7 +339,7 @@ class Database:
             raise DatabaseError(f"Failed to fetch events: {e}") from e
 
     def clear_events(self) -> None:
-        """Delete all event history."""
+        """Удалить всю историю событий."""
         try:
             self._conn.execute("DELETE FROM events")
             self._conn.commit()
@@ -355,7 +347,7 @@ class Database:
             raise DatabaseError(f"Failed to clear events: {e}") from e
 
     def recent_activity(self, limit: int = 5) -> list[sqlite3.Row]:
-        """Return the most recent events, newest first."""
+        """Вернуть последние события, новые сверху."""
         try:
             return self._conn.execute(
                 "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
@@ -363,11 +355,11 @@ class Database:
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to fetch recent activity: {e}") from e
 
-    # Statistics
+    # Статистика
 
     def stats(self) -> dict:
-        """Return aggregate counts as a dict with keys: vehicles, commanders,
-        arrivals, departures, total_events.
+        """Вернуть агрегированные счётчики: vehicles, commanders, arrivals,
+        departures, total_events.
         """
         try:
             row = self._conn.execute(

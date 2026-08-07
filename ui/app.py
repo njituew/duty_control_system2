@@ -1,4 +1,4 @@
-"""Root application window."""
+"""Главное окно приложения."""
 
 import logging
 import queue
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class App(ctk.CTk):
-    """Main application window."""
+    """Главное окно: навигация, вкладки и интеграция с камерой."""
 
     _NAV_ITEMS: ClassVar[list[tuple[str, str, str]]] = [
         ("accounting", "▤", "Учёт"),
@@ -45,12 +45,12 @@ class App(ctk.CTk):
         self._build()
         self._auto_connect_camera()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        # Defer maximise until after the initial geometry pass;
-        # winfo_screenwidth() can return 1 on some platforms if called too early.
+        # Откладываем разворот окна: winfo_screenwidth() может вернуть 1
+        # слишком рано.
         self.after(0, self._maximize_window)
 
     def _set_icon(self) -> None:
-        """Set the window icon for both dev and PyInstaller frozen modes."""
+        """Установить иконку окна для разработки и PyInstaller-сборки."""
         if getattr(sys, "frozen", False):
             base = Path(sys._MEIPASS)
         else:
@@ -60,7 +60,7 @@ class App(ctk.CTk):
             self.iconbitmap(str(icon_path))
 
     def _maximize_window(self) -> None:
-        """Maximise the window in a cross-platform way."""
+        """Развернуть окно на весь экран кросс-платформенным способом."""
         self.update_idletasks()
         if sys.platform == "win32":
             self.state("zoomed")
@@ -114,7 +114,7 @@ class App(ctk.CTk):
         self._tick()
 
     def _tick(self) -> None:
-        """Update the clock label and reschedule itself every second."""
+        """Обновить часы и перепланировать себя каждую секунду."""
         self._clock_lbl.configure(
             text=datetime.now(timezone.utc).astimezone().strftime("%d.%m.%Y  %H:%M:%S")
         )
@@ -157,7 +157,7 @@ class App(ctk.CTk):
             self._nav_buttons[key] = btn
 
     def _build_content(self, parent: ctk.CTkFrame) -> None:
-        """Stack all tab frames in the same grid cell; tkraise() switches between them."""
+        """Сложить все вкладки в одну ячейку; tkraise() переключает их."""
         content = ctk.CTkFrame(parent, fg_color=C["bg"])
         content.grid(row=0, column=1, sticky="nsew")
         content.grid_rowconfigure(0, weight=1)
@@ -184,22 +184,21 @@ class App(ctk.CTk):
                 btn.configure(fg_color="transparent", text_color=C["subtext"])
                 self._nav_indicators[k].grid_remove()  # hide
 
-        # History and stats tabs are refreshed on every visit to avoid stale data.
+        # Вкладки истории, статистики и настроек обновляются при каждом открытии.
         if key in ("history", "stats", "settings"):
             self._tabs[key].refresh()
 
     def _auto_connect_camera(self) -> None:
-        """Restore the last camera connection from saved settings, if any."""
+        """Восстановить последнее подключение к камере из сохранённых настроек."""
         saved = load_settings()
         if saved.get("host"):
             logger.info("Auto-connecting to camera from saved settings")
             self.connect_camera(saved["host"], saved["user"], saved["password"])
 
     def connect_camera(self, host: str, user: str, password: str) -> bool:
-        """Persist the given credentials and start the camera listener.
+        """Сохранить учётные данные и запустить слушатель камеры.
 
-        Returns False when the host is blank; otherwise starts the listener and
-        returns True.
+        Возвращает False при пустом host; иначе запускает слушатель и возвращает True.
         """
         host = host.strip().rstrip("/")
         if not host:
@@ -212,11 +211,11 @@ class App(ctk.CTk):
         return True
 
     def disconnect_camera(self) -> None:
-        """Stop the active camera listener thread and polling."""
+        """Остановить активный поток слушателя камеры и опрос."""
         self._stop_camera_listener()
 
     def _start_camera_listener(self, host: str, user: str, password: str) -> None:
-        """Start the camera listener thread and begin polling its event queue."""
+        """Запустить поток слушателя камеры и начать опрос его очереди."""
         self._stop_camera_listener()
         self._camera_queue: queue.Queue[str] = queue.Queue()
         self._camera_listener = CameraListener(
@@ -234,7 +233,7 @@ class App(ctk.CTk):
             self._camera_polling = True
 
     def _stop_camera_listener(self) -> None:
-        """Stop the camera listener thread, if one is running."""
+        """Остановить поток слушателя камеры, если он запущен."""
         if getattr(self, "_camera_listener", None) is not None:
             self._camera_listener.stop()
             self._camera_listener = None
@@ -242,7 +241,7 @@ class App(ctk.CTk):
             logger.info("Camera listener stopped")
 
     def _poll_camera_queue(self) -> None:
-        """Drain recognised plate numbers and toggle matching vehicles' status."""
+        """Забрать распознанные номера и переключить статус подходящих ТС."""
         if getattr(self, "_camera_listener", None) is None:
             self._camera_polling = False
             return

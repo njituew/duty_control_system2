@@ -1,4 +1,4 @@
-"""Modal input dialog."""
+"""Модальный диалог ввода."""
 
 import customtkinter as ctk
 
@@ -6,7 +6,7 @@ from config import CTRL_RADIUS, C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """Modal dialog that collects a single line of text from the user."""
+    """Модальный диалог."""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
@@ -78,7 +78,7 @@ class InputDialog(ctk.CTkToplevel):
         self._entry.focus_set()
 
     def _confirm(self, _=None) -> None:
-        """Validate the input and store the result, or show an error."""
+        """Проверить ввод и сохранить результат или показать ошибку."""
         text = self._entry.get().strip()
         if not text:
             self._error_lbl.configure(text="Поле не может быть пустым.")
@@ -89,5 +89,5 @@ class InputDialog(ctk.CTkToplevel):
         self.destroy()
 
     def get_input(self) -> str | None:
-        """Return the confirmed input, or None if the dialog was cancelled."""
+        """Вернуть подтверждённый ввод или None, если диалог отменён."""
         return self._result

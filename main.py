@@ -1,4 +1,4 @@
-"""Application entry point."""
+"""Точка входа в приложение."""
 
 import logging
 

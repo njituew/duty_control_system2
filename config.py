@@ -1,4 +1,4 @@
-"""Application configuration: colors, statuses, and label mappings."""
+"""Конфигурация приложения: цвета, статусы и подписи."""
 
 import os
 import sys
@@ -10,13 +10,7 @@ ctk.set_default_color_theme("dark-blue")
 
 
 def _get_db_path() -> str:
-    """Return the absolute path to the SQLite database file.
-
-    The database lives in a 'database' subfolder. When running as a
-    PyInstaller bundle that folder sits next to the executable; during
-    development it sits next to this source file. The folder is created
-    on first access if it does not exist yet.
-    """
+    """Вернуть абсолютный путь к файлу SQLite-базы в подпапке database."""
     if getattr(sys, "frozen", False):
         base = os.path.dirname(sys.executable)
     else:
@@ -28,23 +22,21 @@ def _get_db_path() -> str:
 
 DB_PATH = _get_db_path()
 
-# How many calendar months of event history to keep.
-# Purge runs lazily on every status change.
+# Сколько календарных месяцев истории событий хранить.
+# Очистка выполняется лениво при каждой смене статуса.
 EVENT_RETENTION_MONTHS: int = 1
 
-# Camera (ANPR) integration. Connection credentials (host, user, password) are
-# now configured from the UI and persisted to camera_config.py -- they are not
-# hardcoded here.
+# Учётные данные камеры задаются из UI и сохраняются в camera_config.py,
+# а не задаются жёстко здесь.
 
-# Event codes to subscribe to via eventManager.cgi?action=attach.
+# Коды событий для подписки через eventManager.cgi?action=attach.
 CAMERA_EVENT_CODES: list[str] = ["TrafficJunction"]
 
-# How often the UI checks the camera event queue, in milliseconds.
+# Как часто UI опрашивает очередь событий камеры, мс.
 CAMERA_QUEUE_POLL_MS: int = 500
 
-# Single-palette, disciplined token set:
-# cool graphite neutrals (near-black, never pure black) + one restrained
-# amber accent. Status colors are semantic, desaturated, used sparingly.
+# Палитра: тёмные нейтральные оттенки + один янтарный акцент.
+# Цвета статусов смысловые, приглушённые, используются умеренно.
 C: dict[str, str] = {
     "bg": "#0b0c0e",
     "surface": "#131519",
@@ -62,11 +54,10 @@ C: dict[str, str] = {
     "departed": "#d4705f",
 }
 
-# Corner-radius scale (Shape Consistency Lock):
-# controls (buttons/entries) = 6px, surfaces (panels/cards) = 0px, nav rail = 0px.
+# Скругление углов: элементы управления (кнопки/поля) 6px, панели 0px.
 CTRL_RADIUS: int = 6
 
-# (bullet symbol, hex color, human-readable label) per status key
+# (символ, цвет, подпись) для каждого статуса
 STATUS_MAP: dict[str, tuple[str, str, str]] = {
     "idle": ("●", C["idle"], "В ожидании"),
     "arrived": ("▲", C["arrived"], "Прибыл"),
@@ -92,6 +83,6 @@ EVENT_COLORS: dict[str, str] = {
     "deleted": C["red"],
 }
 
-# Click cycles only between arrived and departed.
-# "idle" is the creation-only state and is excluded from the toggle loop.
+# Клик переключает только между arrived/departed; "idle" — состояние
+# при создании и из цикла переключения исключён.
 STATUS_ORDER: list[str] = ["arrived", "departed"]

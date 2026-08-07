@@ -1,9 +1,7 @@
-"""Persistent storage for camera connection credentials.
+"""Сохранение учётных данных камеры.
 
-Credentials are saved to a plain JSON file next to the application (next to the
-executable when bundled with PyInstaller, otherwise next to this source file).
-The file holds only connection parameters -- this module deliberately does not
-store any sensitive data beyond the password the user types in.
+Параметры подключения сохраняются в JSON-файл в подпапке database.
+Модуль хранит только параметры подключения — никаких лишних данных.
 """
 
 import json
@@ -20,10 +18,7 @@ EMPTY_SETTINGS: dict[str, str] = {
 
 
 def _get_config_path() -> str:
-    """Return the absolute path to the persisted camera settings file.
-
-    The file lives in the 'database' subfolder alongside the SQLite database.
-    """
+    """Абсолютный путь к файлу настроек камеры в подпапке database."""
     if getattr(sys, "frozen", False):
         base = os.path.dirname(sys.executable)
     else:
@@ -34,7 +29,7 @@ def _get_config_path() -> str:
 
 
 def load_settings() -> dict[str, str]:
-    """Load saved camera credentials, or a dict of empty strings on any failure."""
+    """Загрузить сохранённые учётные данные; при ошибке вернуть пустые значения."""
     path = _get_config_path()
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -51,7 +46,7 @@ def load_settings() -> dict[str, str]:
 
 
 def save_settings(host: str, user: str, password: str) -> None:
-    """Persist the given camera credentials to the settings file."""
+    """Сохранить учётные данные камеры в файл настроек."""
     path = _get_config_path()
     data = {"host": host, "user": user, "password": password}
     try:
