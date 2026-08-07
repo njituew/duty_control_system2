@@ -12,14 +12,18 @@ ctk.set_default_color_theme("dark-blue")
 def _get_db_path() -> str:
     """Return the absolute path to the SQLite database file.
 
-    When running as a PyInstaller bundle the database sits next to the
-    executable; during development it sits next to this source file.
+    The database lives in a 'database' subfolder. When running as a
+    PyInstaller bundle that folder sits next to the executable; during
+    development it sits next to this source file. The folder is created
+    on first access if it does not exist yet.
     """
     if getattr(sys, "frozen", False):
         base = os.path.dirname(sys.executable)
     else:
         base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, "database.db")
+    db_dir = os.path.join(base, "database")
+    os.makedirs(db_dir, exist_ok=True)
+    return os.path.join(db_dir, "database.db")
 
 
 DB_PATH = _get_db_path()

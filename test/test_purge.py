@@ -1,7 +1,7 @@
 """Manual smoke-test for the rolling-window event purge.
 
 The script works on an ISOLATED in-memory SQLite database so your real
-database.db is never touched.
+database/database.db is never touched.
 
 What it checks
 --------------
@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, ".")
 
-from database import Database, _cutoff_ts  # noqa: E402
+from database import Database, _cutoff_ts
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
