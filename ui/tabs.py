@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
-from config import C
+from config import CTRL_RADIUS, C
 from database import Database, DatabaseError, DuplicateError
 from ui.components import EntityCardGrid, EventTreeview
 from ui.dialogs import InputDialog
@@ -67,12 +67,12 @@ class _EntitySection(ctk.CTkFrame):
         ctk.CTkEntry(
             toolbar,
             textvariable=self._search_var,
-            placeholder_text=f"🔍  {search_placeholder}",
+            placeholder_text=search_placeholder,
             font=ctk.CTkFont(size=12),
             fg_color=C["surface"],
             border_color=C["border"],
             height=32,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
         ).grid(row=0, column=1, sticky="ew", padx=(0, 10))
 
         ctk.CTkButton(
@@ -81,7 +81,8 @@ class _EntitySection(ctk.CTkFrame):
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=C["accent"],
             hover_color=C["accent_h"],
-            corner_radius=8,
+            text_color=C["bg"],
+            corner_radius=CTRL_RADIUS,
             height=32,
             command=self._on_add,
         ).grid(row=0, column=2, sticky="e")
@@ -90,7 +91,7 @@ class _EntitySection(ctk.CTkFrame):
         self._counter_lbl = ctk.CTkLabel(
             self,
             text="",
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=C["subtext"],
         )
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
@@ -180,7 +181,7 @@ class HistoryTab(ctk.CTkFrame):
         self._build_search()
 
         self._tree_widget = EventTreeview(
-            self, heading_color=C["accent"], row_height=28
+            self, heading_color=C["subtext"], row_height=30
         )
         self._tree_widget.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
@@ -201,24 +202,24 @@ class HistoryTab(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_frame,
-            text="↻  Обновить",
+            text="Обновить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
+            fg_color=C["card"],
             hover_color=C["border"],
             text_color=C["text"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self.refresh,
         ).pack(side="left", padx=(0, 6))
 
         ctk.CTkButton(
             btn_frame,
-            text="🗑  Очистить",
+            text="Очистить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
-            hover_color="#2a1a1a",
+            fg_color=C["card"],
+            hover_color="#241a1a",
             text_color=C["red"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self._on_clear,
         ).pack(side="left")
@@ -229,12 +230,12 @@ class HistoryTab(ctk.CTkFrame):
         ctk.CTkEntry(
             self,
             textvariable=self._search_var,
-            placeholder_text="🔍  Поиск по имени или событию...",
+            placeholder_text="Поиск по имени или событию...",
             font=ctk.CTkFont(size=12),
             fg_color=C["surface"],
             border_color=C["border"],
             height=36,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
     def refresh(self) -> None:
@@ -277,7 +278,7 @@ class StatsTab(ctk.CTkFrame):
         self._stats_row = ctk.CTkFrame(self, fg_color="transparent")
         self._stats_row.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 16))
 
-        recent_panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=10)
+        recent_panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=0)
         recent_panel.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
         recent_panel.grid_rowconfigure(2, weight=1)
         recent_panel.grid_columnconfigure(0, weight=1)
@@ -294,7 +295,7 @@ class StatsTab(ctk.CTkFrame):
         )
 
         self._recent_tree = EventTreeview(
-            recent_panel, heading_color=C["accent"], row_height=28
+            recent_panel, heading_color=C["subtext"], row_height=30
         )
         self._recent_tree.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
@@ -312,12 +313,12 @@ class StatsTab(ctk.CTkFrame):
 
         ctk.CTkButton(
             header,
-            text="↻  Обновить",
+            text="Обновить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
+            fg_color=C["card"],
             hover_color=C["border"],
             text_color=C["text"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self.refresh,
         ).grid(row=0, column=1, sticky="e")
@@ -328,7 +329,7 @@ class StatsTab(ctk.CTkFrame):
         frame = ctk.CTkFrame(
             parent,
             fg_color=C["card"],
-            corner_radius=10,
+            corner_radius=0,
             border_width=1,
             border_color=C["border"],
         )
@@ -339,13 +340,13 @@ class StatsTab(ctk.CTkFrame):
         ctk.CTkLabel(
             frame,
             text=value,
-            font=ctk.CTkFont(size=32, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=30, weight="bold"),
             text_color=color,
-        ).pack(pady=(16, 2))
+        ).pack(pady=(18, 2))
 
         ctk.CTkLabel(
             frame, text=title, font=ctk.CTkFont(size=11), text_color=C["subtext"]
-        ).pack(pady=(0, 14))
+        ).pack(pady=(0, 16))
 
     def refresh(self) -> None:
         for widget in self._stats_row.winfo_children():

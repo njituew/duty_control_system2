@@ -29,9 +29,9 @@ class App(ctk.CTk):
     """Main application window."""
 
     _NAV_ITEMS: ClassVar[list[tuple[str, str, str]]] = [
-        ("accounting", "📋", "Учёт"),
-        ("history", "🕒", "История"),
-        ("stats", "📊", "Статистика"),
+        ("accounting", "▤", "Учёт"),
+        ("history", "≡", "История"),
+        ("stats", "◆", "Статистика"),
     ]
 
     def __init__(self):
@@ -100,18 +100,18 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             header,
-            text="  ⬡  РАСХОД",
-            font=ctk.CTkFont(family="Courier", size=14, weight="bold"),
+            text="РАСХОД",
+            font=ctk.CTkFont(family="Consolas", size=14, weight="bold"),
             text_color=C["accent"],
-        ).grid(row=0, column=0, padx=16, pady=14, sticky="w")
+        ).grid(row=0, column=0, padx=18, pady=15, sticky="w")
 
         self._clock_lbl = ctk.CTkLabel(
             header,
             text="",
-            font=ctk.CTkFont(family="Courier", size=13),
+            font=ctk.CTkFont(family="Consolas", size=12),
             text_color=C["subtext"],
         )
-        self._clock_lbl.grid(row=0, column=2, padx=16, sticky="e")
+        self._clock_lbl.grid(row=0, column=2, padx=18, sticky="e")
         self._tick()
 
     def _tick(self) -> None:
@@ -123,39 +123,39 @@ class App(ctk.CTk):
 
     def _build_sidebar(self, parent: ctk.CTkFrame) -> None:
         sidebar = ctk.CTkFrame(
-            parent, fg_color=C["surface"], corner_radius=0, width=200
+            parent, fg_color=C["surface"], corner_radius=0, width=196
         )
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
 
-        ctk.CTkFrame(sidebar, height=1, fg_color=C["border"]).pack(fill="x")
-
+        self._nav_indicators: dict[str, ctk.CTkLabel] = {}
         self._nav_buttons: dict[str, ctk.CTkButton] = {}
-        for key, icon, label in self._NAV_ITEMS:
+        for key, _icon, label in self._NAV_ITEMS:
+            row = ctk.CTkFrame(sidebar, fg_color="transparent")
+            row.pack(fill="x")
+            row.grid_columnconfigure(0, weight=0)
+            row.grid_columnconfigure(1, weight=1)
+
+            indicator = ctk.CTkLabel(
+                row, text="", width=3, height=18, fg_color=C["accent"], corner_radius=0
+            )
+            indicator.grid(row=0, column=0, padx=(0, 4))
+
             btn = ctk.CTkButton(
-                sidebar,
-                text=f"  {icon}  {label}",
+                row,
+                text=label,
                 font=ctk.CTkFont(size=13),
                 anchor="w",
                 fg_color="transparent",
                 hover_color=C["card"],
                 text_color=C["subtext"],
-                height=46,
+                height=42,
                 corner_radius=0,
                 command=lambda k=key: self._show_tab(k),
             )
-            btn.pack(fill="x", padx=0, pady=1)
+            btn.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+            self._nav_indicators[key] = indicator
             self._nav_buttons[key] = btn
-
-        ctk.CTkFrame(sidebar, height=1, fg_color=C["border"]).pack(
-            fill="x", side="bottom"
-        )
-        ctk.CTkLabel(
-            sidebar,
-            text="v2.0",
-            font=ctk.CTkFont(size=10),
-            text_color=C["subtext"],
-        ).pack(side="bottom", pady=8)
 
     def _build_content(self, parent: ctk.CTkFrame) -> None:
         """Stack all tab frames in the same grid cell; tkraise() switches between them."""
@@ -179,8 +179,10 @@ class App(ctk.CTk):
         for k, btn in self._nav_buttons.items():
             if k == key:
                 btn.configure(fg_color=C["card"], text_color=C["accent"])
+                self._nav_indicators[k].grid()  # show
             else:
                 btn.configure(fg_color="transparent", text_color=C["subtext"])
+                self._nav_indicators[k].grid_remove()  # hide
 
         # History and stats tabs are refreshed on every visit to avoid stale data.
         if key in ("history", "stats"):

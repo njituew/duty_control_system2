@@ -45,22 +45,29 @@ CAMERA_EVENT_CODES: list[str] = ["TrafficJunction"]
 # How often the UI checks the camera event queue, in milliseconds.
 CAMERA_QUEUE_POLL_MS: int = 500
 
+# Single-palette, disciplined token set:
+# cool graphite neutrals (near-black, never pure black) + one restrained
+# amber accent. Status colors are semantic, desaturated, used sparingly.
 C: dict[str, str] = {
-    "bg": "#0f1117",
-    "surface": "#1a1d27",
-    "card": "#1e2130",
-    "border": "#2a2d3e",
-    "accent": "#4f8ef7",
-    "accent_h": "#6ba3ff",
-    "green": "#3dd68c",
-    "red": "#f75f5f",
-    "yellow": "#f7c948",
-    "text": "#e8eaf0",
-    "subtext": "#6b7080",
-    "idle": "#6b7080",
-    "arrived": "#3dd68c",
-    "departed": "#f75f5f",
+    "bg": "#0b0c0e",
+    "surface": "#131519",
+    "card": "#191c21",
+    "border": "#2a2d33",
+    "accent": "#d9a24a",
+    "accent_h": "#e8b766",
+    "green": "#39bd84",
+    "red": "#d4705f",
+    "yellow": "#d8b24a",
+    "text": "#e7e9ec",
+    "subtext": "#8b909a",
+    "idle": "#5c616b",
+    "arrived": "#39bd84",
+    "departed": "#d4705f",
 }
+
+# Corner-radius scale (Shape Consistency Lock):
+# controls (buttons/entries) = 6px, surfaces (panels/cards) = 0px, nav rail = 0px.
+CTRL_RADIUS: int = 6
 
 # (bullet symbol, hex color, human-readable label) per status key
 STATUS_MAP: dict[str, tuple[str, str, str]] = {

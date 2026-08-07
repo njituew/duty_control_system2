@@ -126,25 +126,27 @@ class EventTreeview(tk.Frame):
             )
 
 
-# Per-status visual theme for cards: background, border, text, and subdued text colors.
+# Per-status visual theme for cards: background, border, name text, and status text.
+# All cards share a neutral graphite surface (no per-status tint) so the status is
+# communicated by a thin border + a colored status line, not by flooding the card.
 _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
     "idle": {
-        "bg": "#1e2130",
-        "border": "#2a2d3e",
+        "bg": C["card"],
+        "border": C["border"],
         "text": C["text"],
         "sub": C["subtext"],
     },
     "arrived": {
-        "bg": "#0d2318",
-        "border": "#3dd68c",
-        "text": C["arrived"],
-        "sub": "#2a9c65",
+        "bg": C["card"],
+        "border": C["arrived"],
+        "text": C["text"],
+        "sub": C["arrived"],
     },
     "departed": {
-        "bg": "#280f0f",
-        "border": "#f75f5f",
-        "text": C["departed"],
-        "sub": "#9c2a2a",
+        "bg": C["card"],
+        "border": C["departed"],
+        "text": C["text"],
+        "sub": C["departed"],
     },
 }
 
@@ -221,7 +223,7 @@ class EntityCardGrid(tk.Frame):
             EntityCardGrid._font_name_sm = tkfont.Font(
                 family="Segoe UI", size=9, weight="bold"
             )
-            EntityCardGrid._font_sub = tkfont.Font(family="Segoe UI", size=9)
+            EntityCardGrid._font_sub = tkfont.Font(family="Consolas", size=9)
 
     def _build(self) -> None:
         self._canvas = tk.Canvas(self, bg=C["bg"], bd=0, highlightthickness=0)
@@ -585,7 +587,7 @@ class EntityCardGrid(tk.Frame):
             bd=0,
             relief="flat",
         )
-        menu.add_command(label="🗑  Удалить", command=lambda: self._delete_card(eid))
+        menu.add_command(label="Удалить", command=lambda: self._delete_card(eid))
         self._context_menu = menu
         try:
             menu.tk_popup(event.x_root, event.y_root)
