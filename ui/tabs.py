@@ -441,10 +441,10 @@ class SettingsTab(ctk.CTkFrame):
         ).grid(row=0, column=1, sticky="w")
 
     def _build_fields(self, card: ctk.CTkFrame) -> None:
-        field_opts = dict(
-            font=ctk.CTkFont(size=11),
-            text_color=C["subtext"],
-        )
+        field_opts = {
+            "font": ctk.CTkFont(size=11),
+            "text_color": C["subtext"],
+        }
 
         ctk.CTkLabel(card, text="IP / адрес камеры", **field_opts).grid(
             row=0, column=0, sticky="w", padx=24, pady=(20, 4)
@@ -497,12 +497,24 @@ class SettingsTab(ctk.CTkFrame):
         self._password_entry.insert(0, saved.get("password", ""))
         self._update_status()
 
+    def update_status(self) -> None:
+        """Обновить только строку статуса (без перезаполнения полей)."""
+        self._update_status()
+
     def _update_status(self) -> None:
-        listener = getattr(self._app, "_camera_listener", None)
-        if listener is not None:
-            host = getattr(self._app, "_camera_host", "")
+        state = getattr(self._app, "_camera_state", "")
+        host = getattr(self._app, "_camera_host", "")
+        if state == "connected":
             self._status_lbl.configure(
                 text=f"●  Подключено: {host}", text_color=C["green"]
+            )
+        elif state == "error":
+            self._status_lbl.configure(
+                text="✕  Ошибка подключения к камере", text_color=C["red"]
+            )
+        elif state == "connecting":
+            self._status_lbl.configure(
+                text=f"◐  Подключение к {host}...", text_color=C["yellow"]
             )
         else:
             self._status_lbl.configure(
@@ -517,12 +529,12 @@ class SettingsTab(ctk.CTkFrame):
                 text="Укажите адрес камеры.", text_color=C["red"]
             )
             return
-        if self._app.connect_camera(
+        self._app.connect_camera(
             host,
             self._user_entry.get(),
             self._password_entry.get(),
-        ):
-            self._status_lbl.configure(text="●  Подключено", text_color=C["green"])
+        )
+        self._update_status()
 
     def _on_disconnect(self) -> None:
         self._app.disconnect_camera()

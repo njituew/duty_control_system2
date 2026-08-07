@@ -89,14 +89,17 @@ class CameraListener:
         password: str,
         codes: list[str],
         event_queue: "queue.Queue[str]",
+        status_queue: "queue.Queue[str] | None" = None,
         timeout: int = 30,
     ):
         self._host = host
         self._auth = HTTPDigestAuth(user, password)
         self._codes = codes
         self._queue = event_queue
+        self._status_queue = status_queue
         self._timeout = timeout
         self._stop_event = threading.Event()
+        self._last_emitted_status: str | None = None
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
@@ -113,6 +116,13 @@ class CameraListener:
         codes = ",".join(self._codes)
         return f"http://{self._host}/cgi-bin/eventManager.cgi?action=attach&codes=[{codes}]"
 
+    def _emit_status(self, status: str) -> None:
+        """Сообщить о смене состояния соединения в очередь статусов."""
+        if self._status_queue is None or status == self._last_emitted_status:
+            return
+        self._last_emitted_status = status
+        self._status_queue.put(status)
+
     def _run(self) -> None:
         delay = _MIN_RECONNECT_DELAY
         while not self._stop_event.is_set():
@@ -125,8 +135,10 @@ class CameraListener:
                     exc,
                     delay,
                 )
+                self._emit_status("error")
             except Exception:
                 logger.exception("Неожиданная ошибка в слушателе камеры")
+                self._emit_status("error")
             if self._stop_event.wait(delay):
                 return
             delay = min(delay * 2, _MAX_RECONNECT_DELAY)
@@ -139,6 +151,7 @@ class CameraListener:
             timeout=(self._timeout, None),
         )
         response.raise_for_status()
+        self._emit_status("connected")
         logger.info("Камера подключена к %s", self._attach_url())
         boundary = self._resolve_boundary(response.headers.get("Content-Type", ""))
 

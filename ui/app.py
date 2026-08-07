@@ -40,6 +40,7 @@ class App(ctk.CTk):
         self.db = Database()
         self._camera_listener = None
         self._camera_host = ""
+        self._camera_state = ""
         self._camera_polling = False
 
         self._build()
@@ -215,19 +216,23 @@ class App(ctk.CTk):
         self._stop_camera_listener()
 
     def _start_camera_listener(self, host: str, user: str, password: str) -> None:
-        """Запустить поток слушателя камеры и начать опрос его очереди."""
+        """Запустить поток слушателя камеры и начать опрос его очередей."""
         self._stop_camera_listener()
         self._camera_queue: queue.Queue[str] = queue.Queue()
+        self._camera_status_queue: queue.Queue[str] = queue.Queue()
+        self._camera_host = host
+        self._camera_state = "connecting"
         self._camera_listener = CameraListener(
             host=host,
             user=user,
             password=password,
             codes=CAMERA_EVENT_CODES,
             event_queue=self._camera_queue,
+            status_queue=self._camera_status_queue,
         )
-        self._camera_host = host
         self._camera_listener.start()
         logger.info("Camera listener started on %s", host)
+        self._tabs["settings"].update_status()
         if not self._camera_polling:
             self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
             self._camera_polling = True
@@ -237,14 +242,34 @@ class App(ctk.CTk):
         if getattr(self, "_camera_listener", None) is not None:
             self._camera_listener.stop()
             self._camera_listener = None
-            self._camera_host = ""
             logger.info("Camera listener stopped")
+        self._camera_host = ""
+        self._camera_state = ""
+        self._tabs["settings"].update_status()
+
+    def _drain_camera_status(self) -> None:
+        """Перенести статусы из потока камеры в состояние приложения."""
+        status_queue = getattr(self, "_camera_status_queue", None)
+        if status_queue is None:
+            return
+        changed = False
+        try:
+            while True:
+                status = status_queue.get_nowait()
+                if status in ("connected", "error", "connecting"):
+                    self._camera_state = status
+                    changed = True
+        except queue.Empty:
+            pass
+        if changed:
+            self._tabs["settings"].update_status()
 
     def _poll_camera_queue(self) -> None:
         """Забрать распознанные номера и переключить статус подходящих ТС."""
         if getattr(self, "_camera_listener", None) is None:
             self._camera_polling = False
             return
+        self._drain_camera_status()
         changed = False
         while True:
             try:
