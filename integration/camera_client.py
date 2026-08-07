@@ -14,6 +14,8 @@ import threading
 import requests
 from requests.auth import HTTPDigestAuth
 
+from plates import normalize_plate_number
+
 logger = logging.getLogger(__name__)
 
 _CONTENT_LENGTH_RE = re.compile(rb"Content-Length:\s*(\d+)", re.IGNORECASE)
@@ -22,14 +24,6 @@ _PLATE_NUMBER_RE = re.compile(r'"PlateNumber"\s*:\s*"([^"\\]*)"')
 
 _MIN_RECONNECT_DELAY = 3
 _MAX_RECONNECT_DELAY = 60
-
-
-def normalize_plate(plate: str) -> str | None:
-    """Извлекает основной номер из строки номера, например 'PC0097' -> '0097'.
-    Возвращает None, если цифры не найдены.
-    """
-    match = re.search(r"\d+", plate)
-    return match.group(0) if match else None
 
 
 def _extract_plate(body: bytes) -> str | None:
@@ -219,7 +213,7 @@ class CameraListener:
         if not plate:
             logger.debug("Часть события камеры не содержала номерного знака")
             return
-        number = normalize_plate(plate)
+        number = normalize_plate_number(plate)
         if number:
             logger.info("Номер обнаружен: %s -> %s", plate, number)
             self._queue.put(number)

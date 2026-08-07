@@ -2,11 +2,11 @@
 
 import calendar
 import logging
-import re
 import sqlite3
 from datetime import datetime, timezone
 
 from config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ORDER
+from plates import normalize_plate_number
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +211,8 @@ class Database:
         return self._get_entities("vehicle", search)
 
     def _normalize_number(self, number: str) -> str:
-        """Вернуть только цифры номера ТС для сопоставления."""
-        return "".join(re.findall(r"\d+", number))
+        """Извлечь основной 4-значный номер ТС для сопоставления."""
+        return normalize_plate_number(number) or ""
 
     def find_vehicle_by_number(self, number: str) -> sqlite3.Row | None:
         """Вернуть ТС с совпадающим нормализованным номером."""
