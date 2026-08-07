@@ -1,18 +1,22 @@
 """Переиспользуемые UI-компоненты: EntityCardGrid и EventTreeview."""
 
+import logging
 import tkinter as tk
 import tkinter.font as tkfont
-from datetime import datetime
+from datetime import datetime, timezone
 from tkinter import messagebox, ttk
+from typing import ClassVar
 
 from config import EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS, C
 from database import Database, DatabaseError, NotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 def fmt_timestamp(raw: str) -> str:
     """Преобразовать ISO-метку в 'ЧЧ:ММ ДД.ММ.ГГГГ' или '—' при ошибке."""
     try:
-        dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
+        dt = datetime.fromisoformat(raw[:16])
         return dt.strftime("%H:%M %d.%m.%Y")
     except (ValueError, TypeError):
         return raw[:16] if raw else "—"
@@ -60,13 +64,18 @@ class EventTreeview(tk.Frame):
     """Таблица только для чтения для вывода журнала событий."""
 
     _COLUMNS = ("ts", "type", "name", "event")
-    _HEADERS = {
+    _HEADERS: ClassVar[dict[str, str]] = {
         "ts": "Время",
         "type": "Тип",
         "name": "Наименование",
         "event": "Событие",
     }
-    _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
+    _WIDTHS: ClassVar[dict[str, int]] = {
+        "ts": 160,
+        "type": 100,
+        "name": 260,
+        "event": 120,
+    }
 
     def __init__(
         self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
@@ -565,7 +574,9 @@ class EntityCardGrid(tk.Frame):
             messagebox.showerror("Ошибка", str(exc))
             return
         item["status"] = new_status
-        item["ts"] = datetime.now().strftime("%H:%M %d.%m.%Y")
+        item["ts"] = (
+            datetime.now(tz=timezone.utc).astimezone().strftime("%H:%M %d.%m.%Y")
+        )
         self._repaint_card(eid)
         self._on_changed()
 
@@ -573,8 +584,8 @@ class EntityCardGrid(tk.Frame):
         if self._context_menu:
             try:
                 self._context_menu.destroy()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Контекстное меню уже удалено", exc_info=True)
         menu = tk.Menu(
             self,
             tearoff=0,
