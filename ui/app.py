@@ -10,17 +10,11 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
-from config import (
-    CAMERA_EVENT_CODES,
-    CAMERA_HOST,
-    CAMERA_PASSWORD,
-    CAMERA_QUEUE_POLL_MS,
-    CAMERA_USER,
-    C,
-)
+from camera_config import load_settings, save_settings
+from config import CAMERA_EVENT_CODES, CAMERA_QUEUE_POLL_MS, C
 from database import Database, DatabaseError
 from integration.camera_client import CameraListener
-from ui.tabs import AccountingTab, HistoryTab, StatsTab
+from ui.tabs import AccountingTab, HistoryTab, SettingsTab, StatsTab
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +26,7 @@ class App(ctk.CTk):
         ("accounting", "▤", "Учёт"),
         ("history", "≡", "История"),
         ("stats", "◆", "Статистика"),
+        ("settings", "⚙", "Настройки"),
     ]
 
     def __init__(self):
@@ -43,8 +38,12 @@ class App(ctk.CTk):
         self._set_icon()
 
         self.db = Database()
+        self._camera_listener = None
+        self._camera_host = ""
+        self._camera_polling = False
+
         self._build()
-        self._start_camera_listener()
+        self._auto_connect_camera()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         # Defer maximise until after the initial geometry pass;
         # winfo_screenwidth() can return 1 on some platforms if called too early.
@@ -168,6 +167,7 @@ class App(ctk.CTk):
             "accounting": AccountingTab(content, self.db),
             "history": HistoryTab(content, self.db),
             "stats": StatsTab(content, self.db),
+            "settings": SettingsTab(content, self),
         }
 
         for tab in self._tabs.values():
@@ -185,28 +185,67 @@ class App(ctk.CTk):
                 self._nav_indicators[k].grid_remove()  # hide
 
         # History and stats tabs are refreshed on every visit to avoid stale data.
-        if key in ("history", "stats"):
+        if key in ("history", "stats", "settings"):
             self._tabs[key].refresh()
 
-    def _start_camera_listener(self) -> None:
+    def _auto_connect_camera(self) -> None:
+        """Restore the last camera connection from saved settings, if any."""
+        saved = load_settings()
+        if saved.get("host"):
+            logger.info("Auto-connecting to camera from saved settings")
+            self.connect_camera(saved["host"], saved["user"], saved["password"])
+
+    def connect_camera(self, host: str, user: str, password: str) -> bool:
+        """Persist the given credentials and start the camera listener.
+
+        Returns False when the host is blank; otherwise starts the listener and
+        returns True.
+        """
+        host = host.strip().rstrip("/")
+        if not host:
+            return False
+        try:
+            save_settings(host, user.strip(), password)
+        except RuntimeError as exc:
+            logger.warning("%s", exc)
+        self._start_camera_listener(host, user.strip(), password)
+        return True
+
+    def disconnect_camera(self) -> None:
+        """Stop the active camera listener thread and polling."""
+        self._stop_camera_listener()
+
+    def _start_camera_listener(self, host: str, user: str, password: str) -> None:
         """Start the camera listener thread and begin polling its event queue."""
-        if not CAMERA_HOST:
-            logger.info("Camera integration is disabled")
-            return
+        self._stop_camera_listener()
         self._camera_queue: queue.Queue[str] = queue.Queue()
         self._camera_listener = CameraListener(
-            host=CAMERA_HOST,
-            user=CAMERA_USER,
-            password=CAMERA_PASSWORD,
+            host=host,
+            user=user,
+            password=password,
             codes=CAMERA_EVENT_CODES,
             event_queue=self._camera_queue,
         )
+        self._camera_host = host
         self._camera_listener.start()
-        logger.info("Camera listener started on %s", CAMERA_HOST)
-        self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
+        logger.info("Camera listener started on %s", host)
+        if not self._camera_polling:
+            self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
+            self._camera_polling = True
+
+    def _stop_camera_listener(self) -> None:
+        """Stop the camera listener thread, if one is running."""
+        if getattr(self, "_camera_listener", None) is not None:
+            self._camera_listener.stop()
+            self._camera_listener = None
+            self._camera_host = ""
+            logger.info("Camera listener stopped")
 
     def _poll_camera_queue(self) -> None:
         """Drain recognised plate numbers and toggle matching vehicles' status."""
+        if getattr(self, "_camera_listener", None) is None:
+            self._camera_polling = False
+            return
         changed = False
         while True:
             try:
@@ -237,6 +276,5 @@ class App(ctk.CTk):
         self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
 
     def _on_close(self) -> None:
-        if hasattr(self, "_camera_listener"):
-            self._camera_listener.stop()
+        self._stop_camera_listener()
         self.destroy()

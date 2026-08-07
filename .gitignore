@@ -2,7 +2,7 @@
 TODO.md
 .DS_Store
 mock_data_db.py
-camera_settings.py
+camera_settings.json
 
 # database
 

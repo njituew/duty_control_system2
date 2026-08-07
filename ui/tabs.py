@@ -5,6 +5,7 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
+from camera_config import load_settings
 from config import CTRL_RADIUS, C
 from database import Database, DatabaseError, DuplicateError
 from ui.components import EntityCardGrid, EventTreeview
@@ -359,3 +360,172 @@ class StatsTab(ctk.CTkFrame):
             )
 
         self._recent_tree.populate(self.db.recent_activity(10))
+
+
+class SettingsTab(ctk.CTkFrame):
+    """Camera connection settings: host, credentials, and a connect button."""
+
+    def __init__(self, master, app, **kwargs):
+        super().__init__(master, fg_color=C["bg"], **kwargs)
+        self._app = app
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self._build()
+        self.refresh()
+
+    def _build(self) -> None:
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text="Настройки камеры",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=C["text"],
+        ).grid(row=0, column=0, sticky="w")
+
+        panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=0)
+        panel.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        panel.grid_rowconfigure(1, weight=1)
+        panel.grid_columnconfigure(0, weight=1)
+
+        card = ctk.CTkFrame(
+            panel,
+            fg_color=C["card"],
+            corner_radius=0,
+            border_width=1,
+            border_color=C["border"],
+        )
+        card.grid(row=0, column=0, sticky="new", padx=24, pady=(24, 12))
+        card.grid_columnconfigure(1, weight=1)
+
+        self._build_fields(card)
+
+        self._status_lbl = ctk.CTkLabel(
+            card,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=C["subtext"],
+        )
+        self._status_lbl.grid(
+            row=4, column=0, columnspan=2, sticky="w", padx=24, pady=(0, 6)
+        )
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent")
+        btn_row.grid(row=5, column=0, columnspan=2, sticky="ew", padx=24, pady=(0, 20))
+        btn_row.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Подключиться",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color=C["accent"],
+            hover_color=C["accent_h"],
+            text_color=C["bg"],
+            corner_radius=CTRL_RADIUS,
+            height=36,
+            command=self._on_connect,
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Отключить",
+            font=ctk.CTkFont(size=13),
+            fg_color=C["card"],
+            hover_color="#241a1a",
+            text_color=C["red"],
+            corner_radius=CTRL_RADIUS,
+            height=36,
+            command=self._on_disconnect,
+        ).grid(row=0, column=1, sticky="w")
+
+    def _build_fields(self, card: ctk.CTkFrame) -> None:
+        field_opts = dict(
+            font=ctk.CTkFont(size=11),
+            text_color=C["subtext"],
+        )
+
+        ctk.CTkLabel(card, text="IP / адрес камеры", **field_opts).grid(
+            row=0, column=0, sticky="w", padx=24, pady=(20, 4)
+        )
+        self._host_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+            placeholder_text="например 192.168.1.10",
+        )
+        self._host_entry.grid(row=1, column=0, columnspan=2, sticky="ew", padx=24)
+
+        ctk.CTkLabel(card, text="Логин", **field_opts).grid(
+            row=2, column=0, sticky="w", padx=24, pady=(14, 4)
+        )
+        self._user_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+        )
+        self._user_entry.grid(row=3, column=0, sticky="ew", padx=(24, 12))
+
+        ctk.CTkLabel(card, text="Пароль", **field_opts).grid(
+            row=2, column=1, sticky="w", padx=12, pady=(14, 4)
+        )
+        self._password_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+            show="•",
+        )
+        self._password_entry.grid(row=3, column=1, sticky="ew", padx=(12, 24))
+
+    def refresh(self) -> None:
+        saved = load_settings()
+        self._host_entry.delete(0, "end")
+        self._host_entry.insert(0, saved.get("host", ""))
+        self._user_entry.delete(0, "end")
+        self._user_entry.insert(0, saved.get("user", ""))
+        self._password_entry.delete(0, "end")
+        self._password_entry.insert(0, saved.get("password", ""))
+        self._update_status()
+
+    def _update_status(self) -> None:
+        listener = getattr(self._app, "_camera_listener", None)
+        if listener is not None:
+            host = getattr(self._app, "_camera_host", "")
+            self._status_lbl.configure(
+                text=f"●  Подключено: {host}", text_color=C["green"]
+            )
+        else:
+            self._status_lbl.configure(
+                text="○  Не подключено",
+                text_color=C["idle"],
+            )
+
+    def _on_connect(self) -> None:
+        host = self._host_entry.get().strip()
+        if not host:
+            self._status_lbl.configure(
+                text="Укажите адрес камеры.", text_color=C["red"]
+            )
+            return
+        if self._app.connect_camera(
+            host,
+            self._user_entry.get(),
+            self._password_entry.get(),
+        ):
+            self._status_lbl.configure(
+                text="●  Подключено", text_color=C["green"]
+            )
+
+    def _on_disconnect(self) -> None:
+        self._app.disconnect_camera()
+        self._update_status()
