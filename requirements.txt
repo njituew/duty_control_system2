@@ -6,3 +6,4 @@ idna==3.18
 packaging==26.0
 requests==2.34.2
 urllib3==2.7.0
+pytest==9.1.1
