@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from tkinter import messagebox, ttk
 from typing import ClassVar
 
-from core.config import EVENT_COLORS, EVENT_LABELS, next_status, TYPE_LABELS, C
+from core.config import EVENT_COLORS, EVENT_LABELS, TYPE_LABELS, C, next_status
 from core.database import Database, DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
