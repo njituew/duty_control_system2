@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from tkinter import messagebox, ttk
 from typing import ClassVar
 
-from config import EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS, C
+from config import EVENT_COLORS, EVENT_LABELS, next_status, TYPE_LABELS, C
 from database import Database, DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -594,14 +594,8 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        current = item["status"]
-        if current in STATUS_ORDER:
-            new_status = STATUS_ORDER[
-                (STATUS_ORDER.index(current) + 1) % len(STATUS_ORDER)
-            ]
-        else:
-            # "idle" вне цикла — первый клик всегда переводит в arrived.
-            new_status = STATUS_ORDER[0]
+        # "idle" вне цикла — первый клик всегда переводит в первый статус цикла.
+        new_status = next_status(item["status"])
         try:
             self.db.update_status_and_log(
                 self.entity_type, eid, item["name"], new_status

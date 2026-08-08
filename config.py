@@ -1,26 +1,16 @@
 """Конфигурация приложения: цвета, статусы и подписи."""
 
 import os
-import sys
 
 import customtkinter as ctk
+
+from paths import app_data_dir
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 
-def _get_db_path() -> str:
-    """Вернуть абсолютный путь к файлу SQLite-базы в подпапке database."""
-    if getattr(sys, "frozen", False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(base, "database")
-    os.makedirs(db_dir, exist_ok=True)
-    return os.path.join(db_dir, "database.db")
-
-
-DB_PATH = _get_db_path()
+DB_PATH = os.path.join(app_data_dir(), "database.db")
 
 # Сколько календарных месяцев истории событий хранить.
 # Очистка выполняется лениво при каждой смене статуса.
@@ -46,6 +36,7 @@ C: dict[str, str] = {
     "accent_h": "#e8b766",
     "green": "#39bd84",
     "red": "#d4705f",
+    "danger_h": "#241a1a",
     "yellow": "#d8b24a",
     "text": "#e7e9ec",
     "subtext": "#8b909a",
@@ -56,13 +47,6 @@ C: dict[str, str] = {
 
 # Скругление углов: элементы управления (кнопки/поля) 6px, панели 0px.
 CTRL_RADIUS: int = 6
-
-# (символ, цвет, подпись) для каждого статуса
-STATUS_MAP: dict[str, tuple[str, str, str]] = {
-    "idle": ("●", C["idle"], "В ожидании"),
-    "arrived": ("▲", C["arrived"], "Прибыл"),
-    "departed": ("▼", C["departed"], "Убыл"),
-}
 
 EVENT_LABELS: dict[str, str] = {
     "arrived": "Прибыл",
@@ -83,6 +67,20 @@ EVENT_COLORS: dict[str, str] = {
     "deleted": C["red"],
 }
 
+# Единый источник статусов: набор и цикл переключения.
 # Клик переключает только между arrived/departed; "idle" — состояние
 # при создании и из цикла переключения исключён.
 STATUS_ORDER: list[str] = ["arrived", "departed"]
+STATUS_ALL: frozenset[str] = frozenset({"idle", *STATUS_ORDER})
+
+
+def next_status(current: str) -> str:
+    """Следующий статус по циклу кликов.
+
+    Статус из STATUS_ORDER сдвигается по кругу; любой другой статус
+    (например 'idle') переводится в первый статус цикла.
+    """
+    if current in STATUS_ORDER:
+        idx = STATUS_ORDER.index(current)
+        return STATUS_ORDER[(idx + 1) % len(STATUS_ORDER)]
+    return STATUS_ORDER[0]

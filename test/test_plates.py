@@ -4,39 +4,14 @@ import sys
 
 sys.path.insert(0, ".")
 
+from harness import check, section, summarize
 from plates import normalize_plate_number
 
-# Вспомогательные функции
 
-
-def ok(label: str) -> None:
-    print(f"  \033[32m✓\033[0m  {label}")
-
-
-def fail(label: str, detail: str = "") -> None:
-    print(f"  \033[31m✗\033[0m  {label}")
-    if detail:
-        print(f"       {detail}")
-
-
-def section(title: str) -> None:
-    print(f"\n{'─' * 60}")
-    print(f"  {title}")
-    print(f"{'─' * 60}")
-
-
-def check(raw: str, expected: str | None, label: str | None = None) -> bool:
+def _check_norm(raw: str | None, expected: str | None) -> bool:
     """Проверить один случай: нормализация raw должна дать expected."""
     got = normalize_plate_number(raw)
-    desc = label or f"normalize({raw!r})"
-    if got == expected:
-        ok(f"{desc}  →  {got!r}")
-        return True
-    fail(f"{desc}  →  {got!r}, expected {expected!r}")
-    return False
-
-
-# Тест 1 — все варианты записи «0010 PC-1»
+    return check(got == expected, f"normalize({raw!r})  →  {got!r}")
 
 
 def test_all_variants() -> None:
@@ -54,7 +29,7 @@ def test_all_variants() -> None:
 
     all_ok = True
     for raw in cases:
-        all_ok = check(raw, "0010") and all_ok
+        all_ok = _check_norm(raw, "0010") and all_ok
 
     return all_ok
 
@@ -72,7 +47,7 @@ def test_glued_region() -> None:
 
     all_ok = True
     for raw, expected in cases:
-        all_ok = check(raw, expected) and all_ok
+        all_ok = _check_norm(raw, expected) and all_ok
 
     return all_ok
 
@@ -91,7 +66,7 @@ def test_region_zero() -> None:
 
     all_ok = True
     for raw in cases:
-        all_ok = check(raw, "0010") and all_ok
+        all_ok = _check_norm(raw, "0010") and all_ok
 
     return all_ok
 
@@ -102,14 +77,19 @@ def test_region_zero() -> None:
 def test_plain_and_edge_cases() -> None:
     section("TEST 4 · Стандартный формат и крайние случаи")
 
+    pairs = [
+        ("1234 АВ 7", "1234"),
+        ("АВ 1234-7", "1234"),
+        ("РС 0001", "0001"),
+        ("0010", "0010"),
+        ("", None),
+        ("ABC", None),
+        (None, None),
+    ]
+
     all_ok = True
-    all_ok = check("1234 АВ 7", "1234") and all_ok
-    all_ok = check("АВ 1234-7", "1234") and all_ok
-    all_ok = check("РС 0001", "0001") and all_ok
-    all_ok = check("0010", "0010") and all_ok
-    all_ok = check("", None) and all_ok
-    all_ok = check("ABC", None) and all_ok
-    all_ok = check(None, None) and all_ok
+    for raw, expected in pairs:
+        all_ok = _check_norm(raw, expected) and all_ok
 
     return all_ok
 
@@ -129,17 +109,7 @@ def main() -> None:
         test_plain_and_edge_cases(),
     ]
 
-    passed = sum(1 for r in results if r)
-    total = len(results)
-
-    print(f"\n{'═' * 60}")
-    if passed == total:
-        print(f"  \033[32m✓ All {total} tests passed\033[0m")
-    else:
-        print(f"  \033[31m✗ {total - passed} of {total} tests FAILED\033[0m")
-    print(f"{'═' * 60}\n")
-
-    sys.exit(0 if passed == total else 1)
+    summarize(results)
 
 
 if __name__ == "__main__":

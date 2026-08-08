@@ -5,7 +5,7 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 
-from config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ORDER
+from config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ALL, next_status
 from plates import normalize_plate_number
 
 logger = logging.getLogger(__name__)
@@ -78,11 +78,12 @@ class Database:
         self._conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS vehicles (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                number  TEXT    NOT NULL UNIQUE,
-                status  TEXT    NOT NULL DEFAULT 'idle',
-                created TEXT    NOT NULL,
-                updated TEXT    DEFAULT NULL
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                number      TEXT    NOT NULL UNIQUE,
+                number_norm TEXT    NOT NULL DEFAULT '',
+                status      TEXT    NOT NULL DEFAULT 'idle',
+                created     TEXT    NOT NULL,
+                updated     TEXT    DEFAULT NULL
             );
             CREATE TABLE IF NOT EXISTS commanders (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,7 +104,7 @@ class Database:
             """
         )
 
-        # Добавляем колонку 'updated' для БД, созданных до её введения.
+        # Добавляем колонки, которых может не быть в БД, созданных до их введения.
         for table in ("vehicles", "commanders"):
             if table not in _ALLOWED_TABLES:
                 raise ValueError(f"Unexpected table name in migration: {table!r}")
@@ -113,6 +114,25 @@ class Database:
                 self._conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN updated TEXT DEFAULT NULL"
                 )
+
+        # Нормализованный номер ТС для поиска по событиям камеры. Старые строки
+        # заливаются идемпотентно при каждом запуске (для новых БД колонка и
+        # индекс уже есть в CREATE TABLE).
+        cur = self._conn.execute("PRAGMA table_info(vehicles)")
+        columns = [row[1] for row in cur.fetchall()]
+        if "number_norm" not in columns:
+            self._conn.execute("ALTER TABLE vehicles ADD COLUMN number_norm TEXT")
+        for rid, number in self._conn.execute(
+            "SELECT id, number FROM vehicles WHERE number_norm IS NULL"
+        ).fetchall():
+            self._conn.execute(
+                "UPDATE vehicles SET number_norm = ? WHERE id = ?",
+                (normalize_plate_number(number) or "", rid),
+            )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vehicles_number_norm "
+            "ON vehicles (number_norm)"
+        )
 
         self._conn.commit()
 
@@ -131,11 +151,17 @@ class Database:
         value = value.strip()
         if not value:
             raise ValueError(f"{entity_type.capitalize()} value must not be empty.")
-        try:
-            cur = self._conn.execute(
-                f"INSERT INTO {table} ({col}, status, created) VALUES (?, 'idle', ?)",
-                (value, _now()),
+        if entity_type == "vehicle":
+            sql = (
+                f"INSERT INTO {table} ({col}, status, created, number_norm) "
+                "VALUES (?, 'idle', ?, ?)"
             )
+            params = (value, _now(), normalize_plate_number(value) or "")
+        else:
+            sql = f"INSERT INTO {table} ({col}, status, created) VALUES (?, 'idle', ?)"
+            params = (value, _now())
+        try:
+            cur = self._conn.execute(sql, params)
             self._log(entity_type, cur.lastrowid, value, "created")
             self._conn.commit()
             return cur.lastrowid
@@ -212,24 +238,17 @@ class Database:
         """Вернуть ТС, номер которых содержит подстроку поиска."""
         return self._get_entities("vehicle", search)
 
-    def _normalize_number(self, number: str) -> str:
-        """Извлечь основной 4-значный номер ТС для сопоставления."""
-        return normalize_plate_number(number) or ""
-
     def find_vehicle_by_number(self, number: str) -> sqlite3.Row | None:
         """Вернуть ТС с совпадающим нормализованным номером."""
-        normalized_target = self._normalize_number(number)
-        if not normalized_target:
+        normalized = normalize_plate_number(number)
+        if not normalized:
             return None
         try:
-            rows = self._conn.execute("SELECT * FROM vehicles").fetchall()
+            return self._conn.execute(
+                "SELECT * FROM vehicles WHERE number_norm = ?", (normalized,)
+            ).fetchone()
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to look up vehicle: {e}") from e
-
-        for row in rows:
-            if self._normalize_number(row["number"]) == normalized_target:
-                return row
-        return None
 
     def toggle_vehicle_status_by_number(self, number: str) -> sqlite3.Row | None:
         """Переключить статус ТС между arrived/departed по точному номеру.
@@ -244,16 +263,8 @@ class Database:
         if vehicle is None:
             return None
 
-        current = vehicle["status"]
-        if current in STATUS_ORDER:
-            new_status = STATUS_ORDER[
-                (STATUS_ORDER.index(current) + 1) % len(STATUS_ORDER)
-            ]
-        else:
-            new_status = STATUS_ORDER[0]
-
         self.update_status_and_log(
-            "vehicle", vehicle["id"], vehicle["number"], new_status
+            "vehicle", vehicle["id"], vehicle["number"], next_status(vehicle["status"])
         )
         return self.find_vehicle_by_number(number)
 
@@ -298,19 +309,25 @@ class Database:
 
         Raises:
             ValueError:    При неизвестных entity_type или status.
+            NotFoundError: При отсутствии записи с entity_id.
             DatabaseError: При любой ошибке SQLite.
         """
         table, _ = self._entity_table(entity_type)
 
-        if status not in {"idle", "arrived", "departed"}:
+        if status not in STATUS_ALL:
             raise ValueError(f"Unknown status: {status!r}")
 
         ts = _now()
         try:
-            self._conn.execute(
+            cur = self._conn.execute(
                 f"UPDATE {table} SET status = ?, updated = ? WHERE id = ?",
                 (status, ts, entity_id),
             )
+            if cur.rowcount == 0:
+                self._conn.rollback()
+                raise NotFoundError(
+                    f"{entity_type.capitalize()} id={entity_id} not found."
+                )
             self._conn.execute(
                 "INSERT INTO events (entity_type, entity_id, entity_name, event_type, ts) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -326,8 +343,14 @@ class Database:
 
     def get_events(self, search: str = "", limit: int = 300) -> list[sqlite3.Row]:
         """Вернуть события по подстроке поиска, новые сверху."""
+        limit = min(max(0, int(limit)), 10_000)
+        search = search.strip()
         try:
-            q = f"%{search.strip()}%"
+            if not search:
+                return self._conn.execute(
+                    "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+            q = f"%{search}%"
             return self._conn.execute(
                 """
                 SELECT * FROM events
@@ -367,11 +390,18 @@ class Database:
             row = self._conn.execute(
                 """
                 SELECT
-                    (SELECT COUNT(*) FROM vehicles)                              AS vehicles,
-                    (SELECT COUNT(*) FROM commanders)                            AS commanders,
-                    (SELECT COUNT(*) FROM events WHERE event_type = 'arrived')  AS arrivals,
-                    (SELECT COUNT(*) FROM events WHERE event_type = 'departed') AS departures,
-                    (SELECT COUNT(*) FROM events)                                AS total_events
+                    (SELECT COUNT(*) FROM vehicles)   AS vehicles,
+                    (SELECT COUNT(*) FROM commanders) AS commanders,
+                    ev.arrivals,
+                    ev.departures,
+                    ev.total_events
+                FROM (
+                    SELECT
+                        COUNT(*) FILTER (WHERE event_type = 'arrived')  AS arrivals,
+                        COUNT(*) FILTER (WHERE event_type = 'departed') AS departures,
+                        COUNT(*)                                        AS total_events
+                    FROM events
+                ) ev
                 """
             ).fetchone()
             return dict(row)

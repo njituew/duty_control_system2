@@ -17,6 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, ".")
 
 from database import Database, _cutoff_ts
+from harness import fail, ok, section, summarize
 
 # Вспомогательные функции
 
@@ -45,22 +46,6 @@ def _count_events(db: Database) -> int:
 def _all_ts(db: Database) -> list[str]:
     rows = db._conn.execute("SELECT ts FROM events ORDER BY ts").fetchall()
     return [r[0] for r in rows]
-
-
-def ok(label: str) -> None:
-    print(f"  \033[32m✓\033[0m  {label}")
-
-
-def fail(label: str, detail: str = "") -> None:
-    print(f"  \033[31m✗\033[0m  {label}")
-    if detail:
-        print(f"       {detail}")
-
-
-def section(title: str) -> None:
-    print(f"\n{'─' * 60}")
-    print(f"  {title}")
-    print(f"{'─' * 60}")
 
 
 # Тест 1 — арифметика _cutoff_ts
@@ -351,17 +336,7 @@ def main() -> None:
         test_atomicity_on_error(),
     ]
 
-    passed = sum(1 for r in results if r)
-    total = len(results)
-
-    print(f"\n{'═' * 60}")
-    if passed == total:
-        print(f"  \033[32m✓ All {total} tests passed\033[0m")
-    else:
-        print(f"  \033[31m✗ {total - passed} of {total} tests FAILED\033[0m")
-    print(f"{'═' * 60}\n")
-
-    sys.exit(0 if passed == total else 1)
+    summarize(results)
 
 
 if __name__ == "__main__":

@@ -8,15 +8,20 @@
 2. Дубликаты ТС → DuplicateError, пустое значение → ValueError.
 3. Командиры: добавление, поиск, удаление.
 4. Удаление ТС, отсутствие → NotFoundError.
-5. Статус: update_status_and_log, переключение idle→arrived→departed→idle.
+5. Статус: update_status_and_log, переключение idle→arrived→departed→arrived
+   (idle вне цикла, в него клики не возвращают).
 6. Журнал событий: created/deleted/смена статуса, поиск, recent_activity.
 7. Сброс журнала clear_events и статистика stats.
+8. update_status_and_log с несуществующим id → NotFoundError, фантомное
+   событие в журнал не пишется.
+9. Миграция старой схемы: колонка number_norm добавляется и заливается.
 """
 
 import sys
 
 sys.path.insert(0, ".")
 
+from harness import check, ok, raises, section, summarize
 from database import Database, DatabaseError, DuplicateError, NotFoundError
 
 # Вспомогательные функции
@@ -37,44 +42,6 @@ def _names(db: Database) -> list[str]:
 
 def _event_types(db: Database) -> list[str]:
     return [r["event_type"] for r in db.get_events()]
-
-
-def ok(label: str) -> None:
-    print(f"  \033[32m✓\033[0m  {label}")
-
-
-def fail(label: str, detail: str = "") -> None:
-    print(f"  \033[31m✗\033[0m  {label}")
-    if detail:
-        print(f"       {detail}")
-
-
-def section(title: str) -> None:
-    print(f"\n{'─' * 60}")
-    print(f"  {title}")
-    print(f"{'─' * 60}")
-
-
-def check(cond: bool, label: str, detail: str = "") -> bool:
-    if cond:
-        ok(label)
-        return True
-    fail(label, detail)
-    return False
-
-
-def raises(exc_type: type[BaseException], fn, label: str) -> bool:
-    """Проверить, что при вызове fn() бросается исключение exc_type."""
-    try:
-        fn()
-    except exc_type:
-        ok(label)
-        return True
-    except Exception as e:  # noqa: BLE001
-        fail(label, f"raised {type(e).__name__}: {e} (expected {exc_type.__name__})")
-        return False
-    fail(label, "no exception raised")
-    return False
 
 
 # Тест 1 — добавление и получение ТС
@@ -211,7 +178,7 @@ def test_delete_vehicle() -> None:
     return ok_notfound and ok_generic
 
 
-# Тест 6 — статус и переключение idle → arrived → departed → idle
+# Тест 6 — статус и переключение idle → arrived → departed → arrived
 
 
 def test_status_toggle_cycle() -> None:
@@ -329,11 +296,85 @@ def test_stats() -> None:
     return True
 
 
-# Тест 10 — статистика
+# Тест 9 — update_status_and_log с несуществующим id
+
+
+def test_update_status_missing_id() -> None:
+    section("Тест 9 · update_status_and_log (несуществующий id → NotFoundError)")
+
+    db = _make_db()
+    db.add_vehicle("1234")
+
+    ok_missing = raises(
+        NotFoundError,
+        lambda: db.update_status_and_log("vehicle", 9999, "1234", "arrived"),
+        "update_status_and_log with missing id raises NotFoundError",
+    )
+
+    # В журнале должно остаться только событие 'created' от добавления ТС.
+    check(
+        len(db.get_events()) == 1,
+        "no phantom event logged for missing id",
+        f"events = {_event_types(db)}",
+    )
+
+    return ok_missing
+
+
+# Тест 10 — миграция старой схемы: колонка number_norm
+
+
+def test_number_norm_migration() -> None:
+    section("Тест 10 · Миграция number_norm (старая схема без колонки)")
+
+    import os
+    import sqlite3
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "old.db")
+        conn = sqlite3.connect(path)
+        conn.executescript(
+            """
+            CREATE TABLE vehicles (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                number  TEXT    NOT NULL UNIQUE,
+                status  TEXT    NOT NULL DEFAULT 'idle',
+                created TEXT    NOT NULL,
+                updated TEXT    DEFAULT NULL
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO vehicles (number, status, created) VALUES (?, 'idle', ?)",
+            ("1234 АВ 7", "2026-01-01 00:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        db = Database(path=path)
+
+        row = db.get_vehicles()[0]
+        ok_backfill = check(
+            row["number_norm"] == "1234",
+            "migration backfills number_norm for existing rows",
+            f"number_norm = {row['number_norm']!r}",
+        )
+
+        found = db.find_vehicle_by_number("7-АВ-1234")
+        ok_find = check(
+            found is not None and found["id"] == row["id"],
+            "find_vehicle_by_number works after migration",
+        )
+
+    return ok_backfill and ok_find
+
+
+# Тест 11 — универсальные add_entity/delete_entity
 
 
 def test_generic_entity_functions() -> None:
-    section("Тест 10 · Универсальные add_entity/delete_entity")
+    section("Тест 11 · Универсальные add_entity/delete_entity")
 
     db = _make_db()
     id_v = db.add_entity("vehicle", "1234")
@@ -369,20 +410,12 @@ def main() -> None:
         test_update_status_and_log(),
         test_events_log(),
         test_stats(),
+        test_update_status_missing_id(),
+        test_number_norm_migration(),
         test_generic_entity_functions(),
     ]
 
-    passed = sum(1 for r in results if r)
-    total = len(results)
-
-    print(f"\n{'═' * 60}")
-    if passed == total:
-        print(f"  \033[32m✓ All {total} tests passed\033[0m")
-    else:
-        print(f"  \033[31m✗ {total - passed} of {total} tests FAILED\033[0m")
-    print(f"{'═' * 60}\n")
-
-    sys.exit(0 if passed == total else 1)
+    summarize(results)
 
 
 if __name__ == "__main__":

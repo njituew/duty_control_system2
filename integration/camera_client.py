@@ -47,6 +47,8 @@ def _extract_plate(body: bytes) -> str | None:
 
     try:
         payload, _ = json.JSONDecoder().raw_decode(json_text)
+        if not isinstance(payload, dict):
+            raise json.JSONDecodeError("Ожидался JSON-объект", json_text, 0)
         return payload.get("TrafficCar", {}).get("PlateNumber")
     except json.JSONDecodeError as exc:
         logger.debug(

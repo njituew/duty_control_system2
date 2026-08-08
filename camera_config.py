@@ -3,7 +3,8 @@
 
 import json
 import os
-import sys
+
+from paths import app_data_dir
 
 CONFIG_FILENAME = "camera_settings.json"
 
@@ -16,13 +17,7 @@ EMPTY_SETTINGS: dict[str, str] = {
 
 def _get_config_path() -> str:
     """Абсолютный путь к файлу настроек камеры в подпапке database."""
-    if getattr(sys, "frozen", False):
-        base = os.path.dirname(sys.executable)
-    else:
-        base = os.path.dirname(os.path.abspath(__file__))
-    db_dir = os.path.join(base, "database")
-    os.makedirs(db_dir, exist_ok=True)
-    return os.path.join(db_dir, CONFIG_FILENAME)
+    return os.path.join(app_data_dir(), CONFIG_FILENAME)
 
 
 def load_settings() -> dict[str, str]:
