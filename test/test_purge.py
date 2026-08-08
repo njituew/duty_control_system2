@@ -9,7 +9,7 @@
 """
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -52,7 +52,7 @@ CUTOFF_CASES = [
 
 @pytest.mark.parametrize("fake_now_str,expected_prefix", CUTOFF_CASES)
 def test_cutoff_arithmetic(fake_now_str: str, expected_prefix: str, frozen_now) -> None:
-    fake_now = datetime.strptime(fake_now_str, "%Y-%m-%d %H:%M:%S")
+    fake_now = datetime.strptime(fake_now_str, "%Y-%m-%d %H:%M:%S").astimezone()
     frozen_now(fake_now)
 
     result = _cutoff_ts(1)
@@ -114,7 +114,7 @@ def test_purge_boundary(
     for ts in should_delete + should_keep:
         _insert_event(db, ts)
 
-    frozen_now(datetime.strptime(fake_now_str, "%Y-%m-%d %H:%M:%S"))
+    frozen_now(datetime.strptime(fake_now_str, "%Y-%m-%d %H:%M:%S").astimezone())
     db._purge_old_events()
     db._conn.commit()
 
@@ -135,7 +135,7 @@ def test_year_rollover_e2e(db: Database, frozen_now) -> None:
     _insert_event(db, old_ts, name="А001АА")
     _insert_event(db, keep_ts, name="А001АА")
 
-    frozen_now(datetime(2027, 1, 15, 9, 0, 0))
+    frozen_now(datetime(2027, 1, 15, 9, 0, 0, tzinfo=timezone.utc))
     db.update_status_and_log("vehicle", vid, "А001АА", "arrived")
 
     after_ts = _all_ts(db)

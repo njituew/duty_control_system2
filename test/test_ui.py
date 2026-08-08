@@ -1,11 +1,7 @@
-"""Тесты UI-виджетов на реальном Tk-окне (без дисплея пропускаются).
-
-Окно скрывается withdraw(); клики по карточкам эмулируются координатами
-canvas, таблицы наполняются из in-memory БД. Ничего в окно руками тыкать
-не нужно — события генерируются программно.
-"""
+"""Тесты UI-виджетов."""
 
 import tkinter as tk
+from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
@@ -19,7 +15,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def root() -> tk.Tk:
+def root() -> Iterator[tk.Tk]:
     """Скрытое Tk-окно-хост для виджетов."""
     window = tk.Tk()
     window.withdraw()

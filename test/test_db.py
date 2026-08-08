@@ -278,7 +278,7 @@ def test_duplicate_and_empty_commander(db: Database) -> None:
 
 
 def test_add_vehicle_strips_whitespace(db: Database) -> None:
-    vid = db.add_vehicle("  1234 АВ 7  ")
+    db.add_vehicle("  1234 АВ 7  ")
 
     assert db.get_vehicles()[0]["number"] == "1234 АВ 7"
 

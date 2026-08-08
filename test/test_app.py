@@ -6,7 +6,7 @@
 
 import queue
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 
@@ -25,7 +25,7 @@ def app(monkeypatch):
     """App с in-memory БД и подменёнными настройками камеры; окно скрыто."""
     from ui.app import App
 
-    monkeypatch.setattr("ui.app.load_settings", lambda: {})
+    monkeypatch.setattr("ui.app.load_settings", dict)
     monkeypatch.setattr("ui.app.save_settings", lambda *_args: None)
 
     window = App(db=Database(path=":memory:"))
