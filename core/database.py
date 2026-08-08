@@ -5,8 +5,8 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 
-from config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ALL, next_status
-from plates import normalize_plate_number
+from core.config import DB_PATH, EVENT_RETENTION_MONTHS, STATUS_ALL, next_status
+from core.plates import normalize_plate_number
 
 logger = logging.getLogger(__name__)
 

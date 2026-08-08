@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, ".")
 
 from harness import check, ok, raises, section, summarize
-from database import Database, DatabaseError, DuplicateError, NotFoundError
+from core.database import Database, DatabaseError, DuplicateError, NotFoundError
 
 # Вспомогательные функции
 

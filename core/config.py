@@ -4,7 +4,7 @@ import os
 
 import customtkinter as ctk
 
-from paths import app_data_dir
+from core.paths import app_data_dir
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -16,7 +16,7 @@ DB_PATH = os.path.join(app_data_dir(), "database.db")
 # Очистка выполняется лениво при каждой смене статуса.
 EVENT_RETENTION_MONTHS: int = 1
 
-# Учётные данные камеры задаются из UI и сохраняются в camera_config.py,
+# Учётные данные камеры задаются из UI и сохраняются в core/camera_settings.py,
 # а не задаются жёстко здесь.
 
 # Коды событий для подписки через eventManager.cgi?action=attach.

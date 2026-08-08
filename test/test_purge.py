@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, ".")
 
-from database import Database, _cutoff_ts
+from core.database import Database, _cutoff_ts
 from harness import fail, ok, section, summarize
 
 # Вспомогательные функции
@@ -68,7 +68,7 @@ def test_cutoff_arithmetic() -> None:
     all_ok = True
     for fake_now_str, expected_prefix in cases:
         fake_now = datetime.strptime(fake_now_str, "%Y-%m-%d %H:%M:%S")
-        with patch("database.datetime") as mock_dt:
+        with patch("core.database.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
             mock_dt.strptime = datetime.strptime
             result = _cutoff_ts(1)
@@ -113,7 +113,7 @@ def test_purge_boundary() -> None:
 
     assert _count_events(db) == len(should_delete) + len(should_keep)
 
-    with patch("database.datetime") as mock_dt:
+    with patch("core.database.datetime") as mock_dt:
         mock_dt.now.return_value = fake_now
         mock_dt.strptime = datetime.strptime
         db._purge_old_events()
@@ -160,7 +160,7 @@ def test_year_rollover_e2e() -> None:
 
     before = _count_events(db)
 
-    with patch("database.datetime") as mock_dt:
+    with patch("core.database.datetime") as mock_dt:
         mock_dt.now.return_value = fake_today
         mock_dt.strptime = datetime.strptime
         # Вызов реального публичного метода — очистка запускается внутри транзакции.
@@ -215,7 +215,7 @@ def test_short_month_edge_case() -> None:
     for ts in should_delete + should_keep:
         _insert_event(db, ts)
 
-    with patch("database.datetime") as mock_dt:
+    with patch("core.database.datetime") as mock_dt:
         mock_dt.now.return_value = fake_today
         mock_dt.strptime = datetime.strptime
         db._purge_old_events()
@@ -256,7 +256,7 @@ def test_leap_year_edge_case() -> None:
     for ts in should_delete + should_keep:
         _insert_event(db, ts)
 
-    with patch("database.datetime") as mock_dt:
+    with patch("core.database.datetime") as mock_dt:
         mock_dt.now.return_value = fake_today
         mock_dt.strptime = datetime.strptime
         db._purge_old_events()

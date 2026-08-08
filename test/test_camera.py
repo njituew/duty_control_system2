@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, ".")
 
 from harness import check, section, summarize
-from integration.camera_client import _extract_plate
+from camera.camera_client import _extract_plate
 
 
 # Тест 1 — валидный JSON и запасной вариант через regex

@@ -10,10 +10,10 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
-from camera_config import load_settings, save_settings
-from config import CAMERA_EVENT_CODES, CAMERA_QUEUE_POLL_MS, C
-from database import Database, DatabaseError
-from integration.camera_client import CameraListener
+from camera.camera_client import CameraListener
+from core.camera_settings import load_settings, save_settings
+from core.config import CAMERA_EVENT_CODES, CAMERA_QUEUE_POLL_MS, C
+from core.database import Database, DatabaseError
 from ui.tabs import AccountingTab, HistoryTab, SettingsTab, StatsTab
 
 logger = logging.getLogger(__name__)

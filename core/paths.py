@@ -8,10 +8,10 @@ APP_DATA_DIR = "database"
 
 
 def app_base_dir() -> str:
-    """Базовый каталог приложения: рядом с exe в сборке, иначе рядом с модулем."""
+    """Базовый каталог приложения: рядом с exe в сборке, иначе корень проекта."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def app_data_dir() -> str:

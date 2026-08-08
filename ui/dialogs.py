@@ -2,7 +2,7 @@
 
 import customtkinter as ctk
 
-from config import CTRL_RADIUS, C
+from core.config import CTRL_RADIUS, C
 
 
 class InputDialog(ctk.CTkToplevel):

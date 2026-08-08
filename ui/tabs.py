@@ -5,9 +5,9 @@ from typing import ClassVar
 
 import customtkinter as ctk
 
-from camera_config import load_settings
-from config import CTRL_RADIUS, C
-from database import Database, DatabaseError, DuplicateError
+from core.camera_settings import load_settings
+from core.config import CTRL_RADIUS, C
+from core.database import Database, DatabaseError, DuplicateError
 from ui.components import EntityCardGrid, EventTreeview
 from ui.dialogs import InputDialog
 

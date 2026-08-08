@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, ".")
 
 from harness import check, section, summarize
-from plates import normalize_plate_number
+from core.plates import normalize_plate_number
 
 
 def _check_norm(raw: str | None, expected: str | None) -> bool:

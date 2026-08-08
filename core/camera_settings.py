@@ -4,7 +4,7 @@
 import json
 import os
 
-from paths import app_data_dir
+from core.paths import app_data_dir
 
 CONFIG_FILENAME = "camera_settings.json"
 

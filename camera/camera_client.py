@@ -14,7 +14,7 @@ import threading
 import requests
 from requests.auth import HTTPDigestAuth
 
-from plates import normalize_plate_number
+from core.plates import normalize_plate_number
 
 logger = logging.getLogger(__name__)
 
