@@ -22,7 +22,7 @@ import sqlite3
 
 import pytest
 
-from core.database import Database, DuplicateError, NotFoundError
+from core.database import Database, DatabaseError, DuplicateError, NotFoundError
 
 # Вспомогательные функции
 
@@ -258,3 +258,51 @@ def test_generic_entity_functions(db: Database) -> None:
 
     with pytest.raises(ValueError):
         db.add_entity("nope", "x")
+
+
+def test_generic_entity_functions_reject_unknown_type(db: Database) -> None:
+    with pytest.raises(ValueError):
+        db.get_entities("nope")
+    with pytest.raises(ValueError):
+        db.delete_entity("nope", 1)
+
+
+def test_duplicate_and_empty_commander(db: Database) -> None:
+    db.add_commander("Иванов")
+
+    with pytest.raises(DuplicateError):
+        db.add_commander("Иванов")
+
+    with pytest.raises(ValueError):
+        db.add_commander("   ")
+
+
+def test_add_vehicle_strips_whitespace(db: Database) -> None:
+    vid = db.add_vehicle("  1234 АВ 7  ")
+
+    assert db.get_vehicles()[0]["number"] == "1234 АВ 7"
+
+
+def test_get_events_limit_is_clamped(db: Database) -> None:
+    for i in range(5):
+        db.add_vehicle(f"ТС {i}")
+
+    assert len(db.get_events(limit=3)) == 3
+    assert db.get_events(limit=0) == []
+    assert db.get_events(limit=-5) == []
+    assert len(db.get_events(limit=10_000_000)) == 5
+
+
+def test_events_search_by_type(db: Database) -> None:
+    db.add_vehicle("1234")
+    db.add_commander("Иванов")
+
+    created = db.get_events("created")
+    assert len(created) == 2
+    assert all(ev["event_type"] == "created" for ev in created)
+
+
+def test_database_init_error(tmp_path) -> None:
+    """Путь, указывающий на каталог, -> DatabaseError."""
+    with pytest.raises(DatabaseError):
+        Database(path=str(tmp_path))

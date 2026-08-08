@@ -7,6 +7,23 @@ import pytest
 from core.database import Database
 
 
+def gui_available() -> bool:
+    """Есть ли дисплей: создаётся ли tkinter.Tk на этой машине.
+
+    GUI-тесты (окно приложения, виджеты) пропускаются целиком, если окно
+    создать нельзя (headless-окружение, например CI без экрана).
+    """
+    import tkinter as tk
+
+    try:
+        probe = tk.Tk()
+        probe.withdraw()
+        probe.destroy()
+        return True
+    except tk.TclError:
+        return False
+
+
 @pytest.fixture
 def db() -> Database:
     """База на in-memory SQLite — реальный файл БД не затрагивается."""

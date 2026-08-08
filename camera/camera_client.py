@@ -49,7 +49,10 @@ def _extract_plate(body: bytes) -> str | None:
         payload, _ = json.JSONDecoder().raw_decode(json_text)
         if not isinstance(payload, dict):
             raise json.JSONDecodeError("Ожидался JSON-объект", json_text, 0)
-        return payload.get("TrafficCar", {}).get("PlateNumber")
+        car = payload.get("TrafficCar")
+        if isinstance(car, dict):
+            return car.get("PlateNumber")
+        return None
     except json.JSONDecodeError as exc:
         logger.debug(
             "Некорректный JSON события камеры, пробуем запасной вариант через регулярное выражение: %s; тело=%r",

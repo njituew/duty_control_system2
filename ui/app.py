@@ -29,7 +29,7 @@ class App(ctk.CTk):
         ("settings", "⚙", "Настройки"),
     ]
 
-    def __init__(self):
+    def __init__(self, db: Database | None = None):
         super().__init__()
         self.title("Система контроля")
         self.geometry("1500x800")
@@ -37,7 +37,7 @@ class App(ctk.CTk):
         self.configure(fg_color=C["bg"])
         self._set_icon()
 
-        self.db = Database()
+        self.db = db or Database()
         self._camera_listener = None
         self._camera_host = ""
         self._camera_state = ""

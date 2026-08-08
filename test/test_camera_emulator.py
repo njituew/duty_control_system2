@@ -91,6 +91,31 @@ def test_reports_connected_status(emulator, monkeypatch) -> None:
         listener.stop()
 
 
+def test_report_connected_status_emitted_once(emulator, monkeypatch) -> None:
+    """Status 'connected' приходит один раз и не дублируется без сбоев."""
+    listener, _, statuses = _make_listener(emulator, monkeypatch)
+    listener.start()
+    try:
+        assert statuses.get(timeout=3) == "connected"
+        with pytest.raises(queue.Empty):
+            statuses.get(timeout=0.3)
+    finally:
+        listener.stop()
+
+
+def test_attach_uses_chunked_transfer_encoding(emulator) -> None:
+    """Поток события передаётся чанками (HTTP/1.1 + Transfer-Encoding)."""
+    url = f"http://{emulator.host}{ATTACH_URL}"
+    response = requests.get(
+        url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=3, stream=True
+    )
+    try:
+        assert response.status_code == 200
+        assert response.raw.chunked is True
+    finally:
+        response.close()
+
+
 def test_event_pipeline_updates_vehicle_status(emulator, db, monkeypatch) -> None:
     """Событие камеры -> очередь -> переключение статуса ТС в БД."""
     db.add_vehicle("ВС 0097-7")  # нормализованный номер = "0097"
