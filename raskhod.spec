@@ -64,7 +64,6 @@ a = Analysis(
         "distutils",
         "setuptools",
         "pkg_resources",
-        "email",
         "html.parser",
         "http.server",
         "multiprocessing",

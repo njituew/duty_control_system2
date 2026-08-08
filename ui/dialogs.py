@@ -1,12 +1,12 @@
-"""Modal input dialog."""
+"""Модальный диалог ввода."""
 
 import customtkinter as ctk
 
-from config import C
+from core.config import CTRL_RADIUS, C
 
 
 class InputDialog(ctk.CTkToplevel):
-    """Modal dialog that collects a single line of text from the user."""
+    """Модальный диалог."""
 
     def __init__(self, parent, title: str, prompt: str):
         super().__init__(parent)
@@ -29,9 +29,9 @@ class InputDialog(ctk.CTkToplevel):
             self,
             font=ctk.CTkFont(size=13),
             fg_color=C["card"],
-            border_color=C["accent"],
+            border_color=C["border"],
             height=38,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
         )
         self._entry.pack(fill="x", padx=24)
         self._entry.bind("<Return>", self._confirm)
@@ -53,9 +53,10 @@ class InputDialog(ctk.CTkToplevel):
             text="Добавить",
             fg_color=C["accent"],
             hover_color=C["accent_h"],
+            text_color=C["bg"],
             font=ctk.CTkFont(size=13),
             height=36,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             command=self._confirm,
         ).pack(side="left", expand=True, fill="x", padx=(0, 6))
 
@@ -67,7 +68,7 @@ class InputDialog(ctk.CTkToplevel):
             text_color=C["subtext"],
             font=ctk.CTkFont(size=13),
             height=36,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             command=self.destroy,
         ).pack(side="left", expand=True, fill="x")
 
@@ -77,7 +78,7 @@ class InputDialog(ctk.CTkToplevel):
         self._entry.focus_set()
 
     def _confirm(self, _=None) -> None:
-        """Validate the input and store the result, or show an error."""
+        """Проверить ввод и сохранить результат или показать ошибку."""
         text = self._entry.get().strip()
         if not text:
             self._error_lbl.configure(text="Поле не может быть пустым.")
@@ -88,5 +89,5 @@ class InputDialog(ctk.CTkToplevel):
         self.destroy()
 
     def get_input(self) -> str | None:
-        """Return the confirmed input, or None if the dialog was cancelled."""
+        """Вернуть подтверждённый ввод или None, если диалог отменён."""
         return self._result

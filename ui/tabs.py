@@ -1,20 +1,21 @@
-"""Application tabs: AccountingTab, HistoryTab, StatsTab."""
+"""Вкладки приложения: AccountingTab, HistoryTab, StatsTab."""
 
 from tkinter import messagebox
 from typing import ClassVar
 
 import customtkinter as ctk
 
-from config import C
-from database import Database, DatabaseError, DuplicateError
+from core.camera_settings import load_settings
+from core.config import CTRL_RADIUS, C
+from core.database import Database, DatabaseError, DuplicateError
 from ui.components import EntityCardGrid, EventTreeview
 from ui.dialogs import InputDialog
 
 
 class _EntitySection(ctk.CTkFrame):
-    """Toolbar + search field + card grid for a single entity type.
+    """Панель сущности одного типа: тулбар, поиск и сетка карточек.
 
-    Used as one half of AccountingTab (vehicles on the left, commanders on the right).
+    Используется как половина AccountingTab (ТС слева, командиры справа).
     """
 
     def __init__(
@@ -67,12 +68,12 @@ class _EntitySection(ctk.CTkFrame):
         ctk.CTkEntry(
             toolbar,
             textvariable=self._search_var,
-            placeholder_text=f"🔍  {search_placeholder}",
+            placeholder_text=search_placeholder,
             font=ctk.CTkFont(size=12),
             fg_color=C["surface"],
             border_color=C["border"],
             height=32,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
         ).grid(row=0, column=1, sticky="ew", padx=(0, 10))
 
         ctk.CTkButton(
@@ -81,7 +82,8 @@ class _EntitySection(ctk.CTkFrame):
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=C["accent"],
             hover_color=C["accent_h"],
-            corner_radius=8,
+            text_color=C["bg"],
+            corner_radius=CTRL_RADIUS,
             height=32,
             command=self._on_add,
         ).grid(row=0, column=2, sticky="e")
@@ -90,7 +92,7 @@ class _EntitySection(ctk.CTkFrame):
         self._counter_lbl = ctk.CTkLabel(
             self,
             text="",
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(family="Consolas", size=10),
             text_color=C["subtext"],
         )
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
@@ -121,7 +123,7 @@ class _EntitySection(ctk.CTkFrame):
 
 
 class AccountingTab(ctk.CTkFrame):
-    """Two-column accounting tab: vehicles on the left, commanders on the right."""
+    """Двухколоночная вкладка учёта: ТС слева, командиры справа."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -165,7 +167,7 @@ class AccountingTab(ctk.CTkFrame):
 
 
 class HistoryTab(ctk.CTkFrame):
-    """Event log tab with search and clear controls."""
+    """Вкладка журнала событий с поиском и очисткой."""
 
     def __init__(self, master, db: Database, **kwargs):
         super().__init__(master, fg_color=C["bg"], **kwargs)
@@ -180,7 +182,7 @@ class HistoryTab(ctk.CTkFrame):
         self._build_search()
 
         self._tree_widget = EventTreeview(
-            self, heading_color=C["accent"], row_height=28
+            self, heading_color=C["subtext"], row_height=30
         )
         self._tree_widget.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
@@ -201,24 +203,24 @@ class HistoryTab(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_frame,
-            text="↻  Обновить",
+            text="Обновить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
+            fg_color=C["card"],
             hover_color=C["border"],
             text_color=C["text"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self.refresh,
         ).pack(side="left", padx=(0, 6))
 
         ctk.CTkButton(
             btn_frame,
-            text="🗑  Очистить",
+            text="Очистить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
-            hover_color="#2a1a1a",
+            fg_color=C["card"],
+            hover_color=C["danger_h"],
             text_color=C["red"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self._on_clear,
         ).pack(side="left")
@@ -229,12 +231,12 @@ class HistoryTab(ctk.CTkFrame):
         ctk.CTkEntry(
             self,
             textvariable=self._search_var,
-            placeholder_text="🔍  Поиск по имени или событию...",
+            placeholder_text="Поиск по имени или событию...",
             font=ctk.CTkFont(size=12),
             fg_color=C["surface"],
             border_color=C["border"],
             height=36,
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
     def refresh(self) -> None:
@@ -253,7 +255,7 @@ class HistoryTab(ctk.CTkFrame):
 
 
 class StatsTab(ctk.CTkFrame):
-    """Aggregate statistics tab with a recent-activity feed."""
+    """Вкладка агрегированной статистики и последних событий."""
 
     _STAT_CARDS: ClassVar[list[tuple[str, str, str]]] = [
         ("ТС", "vehicles", "accent"),
@@ -277,7 +279,7 @@ class StatsTab(ctk.CTkFrame):
         self._stats_row = ctk.CTkFrame(self, fg_color="transparent")
         self._stats_row.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 16))
 
-        recent_panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=10)
+        recent_panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=0)
         recent_panel.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
         recent_panel.grid_rowconfigure(2, weight=1)
         recent_panel.grid_columnconfigure(0, weight=1)
@@ -294,7 +296,7 @@ class StatsTab(ctk.CTkFrame):
         )
 
         self._recent_tree = EventTreeview(
-            recent_panel, heading_color=C["accent"], row_height=28
+            recent_panel, heading_color=C["subtext"], row_height=30
         )
         self._recent_tree.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
@@ -312,12 +314,12 @@ class StatsTab(ctk.CTkFrame):
 
         ctk.CTkButton(
             header,
-            text="↻  Обновить",
+            text="Обновить",
             font=ctk.CTkFont(size=12),
-            fg_color=C["surface"],
+            fg_color=C["card"],
             hover_color=C["border"],
             text_color=C["text"],
-            corner_radius=8,
+            corner_radius=CTRL_RADIUS,
             height=34,
             command=self.refresh,
         ).grid(row=0, column=1, sticky="e")
@@ -328,24 +330,24 @@ class StatsTab(ctk.CTkFrame):
         frame = ctk.CTkFrame(
             parent,
             fg_color=C["card"],
-            corner_radius=10,
+            corner_radius=0,
             border_width=1,
             border_color=C["border"],
         )
         frame.grid(row=0, column=col, padx=6, pady=4, sticky="ew")
-        # Each card column gets equal weight so they share available width evenly.
+        # Равные веса колонок, чтобы карточки делили ширину поровну.
         parent.grid_columnconfigure(col, weight=1)
 
         ctk.CTkLabel(
             frame,
             text=value,
-            font=ctk.CTkFont(size=32, weight="bold"),
+            font=ctk.CTkFont(family="Consolas", size=30, weight="bold"),
             text_color=color,
-        ).pack(pady=(16, 2))
+        ).pack(pady=(18, 2))
 
         ctk.CTkLabel(
             frame, text=title, font=ctk.CTkFont(size=11), text_color=C["subtext"]
-        ).pack(pady=(0, 14))
+        ).pack(pady=(0, 16))
 
     def refresh(self) -> None:
         for widget in self._stats_row.winfo_children():
@@ -358,3 +360,182 @@ class StatsTab(ctk.CTkFrame):
             )
 
         self._recent_tree.populate(self.db.recent_activity(10))
+
+
+class SettingsTab(ctk.CTkFrame):
+    """Настройки подключения к камере: хост, учётные данные и кнопка подключения."""
+
+    def __init__(self, master, app, **kwargs):
+        super().__init__(master, fg_color=C["bg"], **kwargs)
+        self._app = app
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self._build()
+        self.refresh()
+
+    def _build(self) -> None:
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text="Настройки камеры",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=C["text"],
+        ).grid(row=0, column=0, sticky="w")
+
+        panel = ctk.CTkFrame(self, fg_color=C["surface"], corner_radius=0)
+        panel.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        panel.grid_rowconfigure(1, weight=1)
+        panel.grid_columnconfigure(0, weight=1)
+
+        card = ctk.CTkFrame(
+            panel,
+            fg_color=C["card"],
+            corner_radius=0,
+            border_width=1,
+            border_color=C["border"],
+        )
+        card.grid(row=0, column=0, sticky="new", padx=24, pady=(24, 12))
+        card.grid_columnconfigure(1, weight=1)
+
+        self._build_fields(card)
+
+        self._status_lbl = ctk.CTkLabel(
+            card,
+            text="",
+            font=ctk.CTkFont(size=12),
+            text_color=C["subtext"],
+        )
+        self._status_lbl.grid(
+            row=4, column=0, columnspan=2, sticky="w", padx=24, pady=(0, 6)
+        )
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent")
+        btn_row.grid(row=5, column=0, columnspan=2, sticky="ew", padx=24, pady=(0, 20))
+        btn_row.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Подключиться",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color=C["accent"],
+            hover_color=C["accent_h"],
+            text_color=C["bg"],
+            corner_radius=CTRL_RADIUS,
+            height=36,
+            command=self._on_connect,
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Отключить",
+            font=ctk.CTkFont(size=13),
+            fg_color=C["card"],
+            hover_color=C["danger_h"],
+            text_color=C["red"],
+            corner_radius=CTRL_RADIUS,
+            height=36,
+            command=self._on_disconnect,
+        ).grid(row=0, column=1, sticky="w")
+
+    def _build_fields(self, card: ctk.CTkFrame) -> None:
+        field_opts = {
+            "font": ctk.CTkFont(size=11),
+            "text_color": C["subtext"],
+        }
+
+        ctk.CTkLabel(card, text="IP / адрес камеры", **field_opts).grid(
+            row=0, column=0, sticky="w", padx=24, pady=(20, 4)
+        )
+        self._host_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+            placeholder_text="например 192.168.1.10",
+        )
+        self._host_entry.grid(row=1, column=0, columnspan=2, sticky="ew", padx=24)
+
+        ctk.CTkLabel(card, text="Логин", **field_opts).grid(
+            row=2, column=0, sticky="w", padx=24, pady=(14, 4)
+        )
+        self._user_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+        )
+        self._user_entry.grid(row=3, column=0, sticky="ew", padx=(24, 12))
+
+        ctk.CTkLabel(card, text="Пароль", **field_opts).grid(
+            row=2, column=1, sticky="w", padx=12, pady=(14, 4)
+        )
+        self._password_entry = ctk.CTkEntry(
+            card,
+            font=ctk.CTkFont(size=13),
+            fg_color=C["surface"],
+            border_color=C["border"],
+            height=38,
+            corner_radius=CTRL_RADIUS,
+            show="•",
+        )
+        self._password_entry.grid(row=3, column=1, sticky="ew", padx=(12, 24))
+
+    def refresh(self) -> None:
+        saved = load_settings()
+        self._host_entry.delete(0, "end")
+        self._host_entry.insert(0, saved.get("host", ""))
+        self._user_entry.delete(0, "end")
+        self._user_entry.insert(0, saved.get("user", ""))
+        self._password_entry.delete(0, "end")
+        self._password_entry.insert(0, saved.get("password", ""))
+        self._update_status()
+
+    def update_status(self) -> None:
+        """Обновить только строку статуса (без перезаполнения полей)."""
+        self._update_status()
+
+    def _update_status(self) -> None:
+        state = getattr(self._app, "_camera_state", "")
+        host = getattr(self._app, "_camera_host", "")
+        if state == "connected":
+            self._status_lbl.configure(
+                text=f"●  Подключено: {host}", text_color=C["green"]
+            )
+        elif state == "error":
+            self._status_lbl.configure(
+                text="✕  Ошибка подключения к камере", text_color=C["red"]
+            )
+        elif state == "connecting":
+            self._status_lbl.configure(
+                text=f"◐  Подключение к {host}...", text_color=C["yellow"]
+            )
+        else:
+            self._status_lbl.configure(
+                text="○  Не подключено",
+                text_color=C["idle"],
+            )
+
+    def _on_connect(self) -> None:
+        host = self._host_entry.get().strip()
+        if not host:
+            self._status_lbl.configure(
+                text="Укажите адрес камеры.", text_color=C["red"]
+            )
+            return
+        self._app.connect_camera(
+            host,
+            self._user_entry.get(),
+            self._password_entry.get(),
+        )
+        self._update_status()
+
+    def _on_disconnect(self) -> None:
+        self._app.disconnect_camera()
+        self._update_status()

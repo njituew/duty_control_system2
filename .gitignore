@@ -1,7 +1,9 @@
 # project
 TODO.md
 .DS_Store
-mock_data_db.py
+scripts/mock_data_db.py
+camera_settings.json
+AGENTS.md
 
 # database
 

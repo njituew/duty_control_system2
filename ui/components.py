@@ -1,19 +1,22 @@
-"""Reusable UI components: EntityCardGrid and EventTreeview."""
+"""Переиспользуемые UI-компоненты: EntityCardGrid и EventTreeview."""
 
+import logging
 import tkinter as tk
 import tkinter.font as tkfont
-import tkinter.ttk as ttk
-from datetime import datetime
-from tkinter import messagebox
+from datetime import datetime, timezone
+from tkinter import messagebox, ttk
+from typing import ClassVar
 
-from config import EVENT_COLORS, EVENT_LABELS, STATUS_ORDER, TYPE_LABELS, C
-from database import Database, DatabaseError, NotFoundError
+from core.config import EVENT_COLORS, EVENT_LABELS, next_status, TYPE_LABELS, C
+from core.database import Database, DatabaseError, NotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 def fmt_timestamp(raw: str) -> str:
-    """Parse a stored ISO timestamp and return 'HH:MM DD.MM.YYYY', or '—' on failure."""
+    """Преобразовать ISO-метку в 'ЧЧ:ММ ДД.ММ.ГГГГ' или '—' при ошибке."""
     try:
-        dt = datetime.strptime(raw[:16], "%Y-%m-%d %H:%M")
+        dt = datetime.fromisoformat(raw[:16])
         return dt.strftime("%H:%M %d.%m.%Y")
     except (ValueError, TypeError):
         return raw[:16] if raw else "—"
@@ -22,7 +25,7 @@ def fmt_timestamp(raw: str) -> str:
 def apply_treeview_style(
     style_name: str, row_height: int = 38, font_size: int = 11
 ) -> None:
-    """Register a dark ttk.Treeview style under the given name prefix."""
+    """Зарегистрировать тёмный стиль ttk.Treeview под заданным именем."""
     style = ttk.Style()
     style.theme_use("default")
     style.configure(
@@ -58,22 +61,27 @@ def apply_treeview_style(
 
 
 class EventTreeview(tk.Frame):
-    """Read-only table for displaying event log entries."""
+    """Таблица только для чтения для вывода журнала событий."""
 
     _COLUMNS = ("ts", "type", "name", "event")
-    _HEADERS = {
+    _HEADERS: ClassVar[dict[str, str]] = {
         "ts": "Время",
         "type": "Тип",
         "name": "Наименование",
         "event": "Событие",
     }
-    _WIDTHS = {"ts": 160, "type": 100, "name": 260, "event": 120}
+    _WIDTHS: ClassVar[dict[str, int]] = {
+        "ts": 160,
+        "type": 100,
+        "name": 260,
+        "event": 120,
+    }
 
     def __init__(
         self, master, heading_color: str = C["accent"], row_height: int = 28, **kwargs
     ):
         super().__init__(master, bg=C["surface"], bd=0, highlightthickness=0, **kwargs)
-        # id(self) gives a unique style name without a mutable class-level counter.
+        # Уникальное имя стиля на основе id() — без изменяемого счётчика класса.
         self._style_name = f"Events{id(self)}"
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -109,7 +117,7 @@ class EventTreeview(tk.Frame):
         vsb.grid(row=0, column=1, sticky="ns")
 
     def populate(self, rows) -> None:
-        """Replace all rows with the given dataset."""
+        """Заменить все строки переданным набором данных."""
         self._tree.delete(*self._tree.get_children())
         for ev in rows:
             tag = ev["event_type"] if ev["event_type"] in EVENT_COLORS else "default"
@@ -126,29 +134,31 @@ class EventTreeview(tk.Frame):
             )
 
 
-# Per-status visual theme for cards: background, border, text, and subdued text colors.
+# Тема карточки по статусу: фон, рамка, цвет имени и текста статуса.
+# Все карточки имеют нейтральную графитовую поверхность — статус показан
+# тонкой рамкой и цветной строкой, а не заливкой карточки.
 _CARD_STATUS_COLORS: dict[str, dict[str, str]] = {
     "idle": {
-        "bg": "#1e2130",
-        "border": "#2a2d3e",
+        "bg": C["card"],
+        "border": C["border"],
         "text": C["text"],
         "sub": C["subtext"],
     },
     "arrived": {
-        "bg": "#0d2318",
-        "border": "#3dd68c",
-        "text": C["arrived"],
-        "sub": "#2a9c65",
+        "bg": C["card"],
+        "border": C["arrived"],
+        "text": C["text"],
+        "sub": C["arrived"],
     },
     "departed": {
-        "bg": "#280f0f",
-        "border": "#f75f5f",
-        "text": C["departed"],
-        "sub": "#9c2a2a",
+        "bg": C["card"],
+        "border": C["departed"],
+        "text": C["text"],
+        "sub": C["departed"],
     },
 }
 
-# Status label text differs slightly between vehicles and commanders (grammatical gender).
+# Подпись статуса зависит от рода: у ТС и командиров слова различаются.
 _STATUS_LABEL: dict[str, dict[str, str]] = {
     "vehicle": {
         "idle": "В ожидании",
@@ -164,26 +174,28 @@ _STATUS_LABEL: dict[str, dict[str, str]] = {
 
 _CARD_COLS = 3
 _CARD_PAD = 10
-_CARD_H = 82  # card height in pixels
+_CARD_H = 82  # высота карточки в пикселях
 
-_CARD_TEXT_PAD_X = 14  # horizontal inset from the left card edge
-_CARD_NAME_Y = 20  # Y offset of the name label from the card top
-_CARD_STATUS_Y_SINGLE = 54  # Y for the status line when there is only one line (idle)
-_CARD_STATUS_Y_DOUBLE = 46  # Y for the status line when a timestamp follows below it
-_CARD_TIME_Y = 62  # Y for the timestamp line
+_CARD_TEXT_PAD_X = 14  # отступ текста от левого края карточки
+_CARD_NAME_Y = 20  # Y-смещение подписи имени от верха карточки
+_CARD_STATUS_Y_SINGLE = 54  # Y строки статуса, когда строка одна (idle)
+_CARD_STATUS_Y_DOUBLE = 46  # Y строки статуса, когда ниже идёт время
+_CARD_TIME_Y = 62  # Y строки времени
+
+_RESIZE_DEBOUNCE_MS = 40
 
 
 class EntityCardGrid(tk.Frame):
-    """Interactive card grid backed by a scrolling tk.Canvas.
+    """Интерактивная сетка карточек на скроллируемом tk.Canvas.
 
-    Cards are drawn as Canvas rectangles and text items for performance.
-    populate() rebuilds the whole grid in O(N); hover and click update
-    only the affected card via O(1) itemconfigure calls.
+    Карточки рисуются прямоугольниками и текстовыми элементами для
+    производительности: populate() перестраивает сетку за O(N), hover и клик
+    обновляют только затронутую карточку через O(1) itemconfigure.
     """
 
     _font_name: tkfont.Font | None = None
     _font_sub: tkfont.Font | None = None
-    _font_name_sm: tkfont.Font | None = None  # used for names longer than 18 chars
+    _font_name_sm: tkfont.Font | None = None  # для имён длиннее 18 символов
 
     def __init__(
         self,
@@ -198,10 +210,10 @@ class EntityCardGrid(tk.Frame):
         self.entity_type = entity_type
         self._on_changed = on_changed or (lambda: None)
 
-        self._items: dict[int, dict] = {}  # eid → card data + canvas item ids
-        self._order: list[int] = []  # sorted list of eids
-        self._idx_to_eid: list[int] = []  # position → eid
-        self._eid_to_idx: dict[int, int] = {}  # eid → position
+        self._items: dict[int, dict] = {}  # eid → данные карточки + id элементов canvas
+        self._order: list[int] = []  # отсортированный список eid
+        self._idx_to_eid: list[int] = []  # позиция → eid
+        self._eid_to_idx: dict[int, int] = {}  # eid → позиция
 
         self._canvas_w: int = 0
         self._hovered_eid: int = -1
@@ -213,7 +225,7 @@ class EntityCardGrid(tk.Frame):
         self._build()
 
     def _init_fonts(self) -> None:
-        """Initialise shared class-level Font objects on first instantiation."""
+        """Инициализировать общие шрифты класса при первом создании."""
         if EntityCardGrid._font_name is None:
             EntityCardGrid._font_name = tkfont.Font(
                 family="Segoe UI", size=11, weight="bold"
@@ -221,7 +233,7 @@ class EntityCardGrid(tk.Frame):
             EntityCardGrid._font_name_sm = tkfont.Font(
                 family="Segoe UI", size=9, weight="bold"
             )
-            EntityCardGrid._font_sub = tkfont.Font(family="Segoe UI", size=9)
+            EntityCardGrid._font_sub = tkfont.Font(family="Consolas", size=9)
 
     def _build(self) -> None:
         self._canvas = tk.Canvas(self, bg=C["bg"], bd=0, highlightthickness=0)
@@ -243,7 +255,7 @@ class EntityCardGrid(tk.Frame):
         self._canvas.bind("<Leave>", self._on_canvas_leave)
 
     def _on_canvas_enter(self, _event) -> None:
-        # Activate mouse-wheel scrolling only while the cursor is over this canvas.
+        # Активируем прокрутку колесом, только пока курсор над этим canvas.
         self._canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
     def _on_canvas_leave(self, event) -> None:
@@ -255,7 +267,7 @@ class EntityCardGrid(tk.Frame):
         return (w - _CARD_PAD * (_CARD_COLS + 1)) // _CARD_COLS
 
     def _card_rect(self, idx: int) -> tuple[int, int, int, int]:
-        """Return absolute canvas coords (x1, y1, x2, y2) for card at sorted index."""
+        """Вернуть абсолютные координаты карточки (x1, y1, x2, y2) по индексу."""
         cw = self._cell_w()
         col = idx % _CARD_COLS
         row = idx // _CARD_COLS
@@ -279,11 +291,11 @@ class EntityCardGrid(tk.Frame):
         )
 
     def _canvas_coords(self, event) -> tuple[int, int]:
-        """Convert widget-relative mouse coords to absolute canvas coords."""
+        """Перевести координаты мыши из виджета в координаты canvas."""
         return int(self._canvas.canvasx(event.x)), int(self._canvas.canvasy(event.y))
 
     def _hit_test(self, cx: int, cy: int) -> int:
-        """Return the eid of the card under the given canvas point, or -1."""
+        """Вернуть eid карточки под заданной точкой canvas, или -1."""
         cw = self._cell_w()
         if cw <= 0:
             return -1
@@ -303,7 +315,7 @@ class EntityCardGrid(tk.Frame):
         return f"c{eid}"
 
     def _draw_card(self, idx: int, eid: int) -> None:
-        """Create all canvas items for a card. Called once per card in populate()."""
+        """Создать все элементы canvas для карточки. Вызывается один раз в populate()."""
         item = self._items[eid]
         status = item["status"]
         colors = _CARD_STATUS_COLORS.get(status, _CARD_STATUS_COLORS["idle"])
@@ -321,7 +333,7 @@ class EntityCardGrid(tk.Frame):
             outline="",
             tags=tag,
         )
-        # Inner rect inset by 1 px so the border color is visible around the edge.
+        # Внутренний прямоугольник со смещением 1px, чтобы цвет рамки был виден по краю.
         item["tag_bg"] = cv.create_rectangle(
             x1 + 1,
             y1 + 1,
@@ -379,7 +391,7 @@ class EntityCardGrid(tk.Frame):
             item["tag_sub2"] = None
 
     def _repaint_card(self, eid: int) -> None:
-        """Update colors and text of an existing card without recreating its items."""
+        """Обновить цвета и текст существующей карточки без пересоздания элементов."""
         item = self._items.get(eid)
         if not item:
             return
@@ -403,7 +415,7 @@ class EntityCardGrid(tk.Frame):
             )
             cv.itemconfigure(item["tag_sub1"], text=status_lbl, fill=colors["sub"])
             if item["tag_sub2"] is None:
-                # Card was previously idle and had no timestamp item — create it now.
+                # Карточка была idle и не имела элемента времени — создаём его сейчас.
                 item["tag_sub2"] = cv.create_text(
                     x1 + _CARD_TEXT_PAD_X,
                     y1 + _CARD_TIME_Y,
@@ -440,12 +452,12 @@ class EntityCardGrid(tk.Frame):
         )
 
     def _sync_order_index(self) -> None:
-        """Rebuild the position ↔ eid lookup tables from _order."""
+        """Перестроить таблицы соответствия позиция ↔ eid из _order."""
         self._idx_to_eid = list(self._order)
         self._eid_to_idx = {eid: idx for idx, eid in enumerate(self._order)}
 
     def populate(self, rows) -> None:
-        """Rebuild the entire grid from a fresh row set."""
+        """Перестроить всю сетку из нового набора строк."""
         self._canvas.delete("all")
         self._items.clear()
         self._order.clear()
@@ -481,7 +493,7 @@ class EntityCardGrid(tk.Frame):
         return len(self._items)
 
     def _rebuild_after_delete(self) -> None:
-        """Redraw all cards from in-memory data without re-querying the database."""
+        """Перерисовать все карточки из памяти без повторного запроса к БД."""
         self._canvas.delete("all")
         self._order = sorted(
             self._items.keys(),
@@ -493,6 +505,41 @@ class EntityCardGrid(tk.Frame):
             self._draw_card(idx, eid)
         self._canvas.after_idle(self._update_scroll_region)
 
+    def _relayout(self) -> None:
+        """Переставить карточки под текущую ширину canvas без пересоздания элементов."""
+        self._relayout_job = None
+        if not self._order:
+            self._update_scroll_region()
+            return
+
+        yview = self._canvas.yview()
+        cw = self._cell_w()
+        cv = self._canvas
+        for idx, eid in enumerate(self._order):
+            item = self._items.get(eid)
+            if not item:
+                continue
+            x1, y1, x2, y2 = self._card_rect(idx)
+            cv.coords(item["tag_border"], x1, y1, x2, y2)
+            cv.coords(item["tag_bg"], x1 + 1, y1 + 1, x2 - 1, y2 - 1)
+            cv.coords(item["tag_name"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_NAME_Y)
+            cv.itemconfigure(item["tag_name"], width=max(cw - _CARD_TEXT_PAD_X * 2, 1))
+            if item.get("tag_sub2") is not None:
+                cv.coords(
+                    item["tag_sub1"],
+                    x1 + _CARD_TEXT_PAD_X,
+                    y1 + _CARD_STATUS_Y_DOUBLE,
+                )
+                cv.coords(item["tag_sub2"], x1 + _CARD_TEXT_PAD_X, y1 + _CARD_TIME_Y)
+            else:
+                cv.coords(
+                    item["tag_sub1"],
+                    x1 + _CARD_TEXT_PAD_X,
+                    y1 + _CARD_STATUS_Y_SINGLE,
+                )
+        self._update_scroll_region()
+        self._canvas.yview_moveto(yview[0])
+
     def _on_configure(self, event) -> None:
         new_w = event.width
         if new_w == self._canvas_w:
@@ -501,13 +548,12 @@ class EntityCardGrid(tk.Frame):
         if not self._order:
             self._update_scroll_region()
             return
-        # Card width depends on canvas width, so a resize forces a full redraw.
-        yview = self._canvas.yview()
-        self._canvas.delete("all")
-        for idx, eid in enumerate(self._order):
-            self._draw_card(idx, eid)
-        self._update_scroll_region()
-        self._canvas.yview_moveto(yview[0])
+        # Поток <Configure> идёт дольше, чем нравится событию; планируем один
+        # relayout, и он выполнится с уже обновлённой _canvas_w. Повторные
+        # события ресайза не порождают новых задач — только приподнимают флаг.
+        if getattr(self, "_relayout_job", None) is not None:
+            return
+        self._relayout_job = self._canvas.after(_RESIZE_DEBOUNCE_MS, self._relayout)
 
     def _on_mousewheel(self, event) -> None:
         delta = event.delta
@@ -548,14 +594,8 @@ class EntityCardGrid(tk.Frame):
         item = self._items.get(eid)
         if not item:
             return
-        current = item["status"]
-        if current in STATUS_ORDER:
-            new_status = STATUS_ORDER[
-                (STATUS_ORDER.index(current) + 1) % len(STATUS_ORDER)
-            ]
-        else:
-            # "idle" is not in the cycle — first click always goes to arrived.
-            new_status = STATUS_ORDER[0]
+        # "idle" вне цикла — первый клик всегда переводит в первый статус цикла.
+        new_status = next_status(item["status"])
         try:
             self.db.update_status_and_log(
                 self.entity_type, eid, item["name"], new_status
@@ -564,7 +604,9 @@ class EntityCardGrid(tk.Frame):
             messagebox.showerror("Ошибка", str(exc))
             return
         item["status"] = new_status
-        item["ts"] = datetime.now().strftime("%H:%M %d.%m.%Y")
+        item["ts"] = (
+            datetime.now(tz=timezone.utc).astimezone().strftime("%H:%M %d.%m.%Y")
+        )
         self._repaint_card(eid)
         self._on_changed()
 
@@ -572,8 +614,8 @@ class EntityCardGrid(tk.Frame):
         if self._context_menu:
             try:
                 self._context_menu.destroy()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Контекстное меню уже удалено", exc_info=True)
         menu = tk.Menu(
             self,
             tearoff=0,
@@ -585,7 +627,7 @@ class EntityCardGrid(tk.Frame):
             bd=0,
             relief="flat",
         )
-        menu.add_command(label="🗑  Удалить", command=lambda: self._delete_card(eid))
+        menu.add_command(label="Удалить", command=lambda: self._delete_card(eid))
         self._context_menu = menu
         try:
             menu.tk_popup(event.x_root, event.y_root)
