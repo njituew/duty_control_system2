@@ -43,6 +43,8 @@ class App(ctk.CTk):
         self._camera_state = ""
         self._camera_polling = False
 
+        self._camera_banner = None
+
         self._build()
         self._auto_connect_camera()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -78,13 +80,14 @@ class App(ctk.CTk):
                 self.geometry(f"{w}x{h}+0+0")
 
     def _build(self) -> None:
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         self._build_header()
+        self._build_camera_banner()
 
         main = ctk.CTkFrame(self, fg_color="transparent")
-        main.grid(row=1, column=0, sticky="nsew")
+        main.grid(row=2, column=0, sticky="nsew")
         main.grid_rowconfigure(0, weight=1)
         main.grid_columnconfigure(1, weight=1)
 
@@ -105,6 +108,12 @@ class App(ctk.CTk):
             text_color=C["accent"],
         ).grid(row=0, column=0, padx=18, pady=15, sticky="w")
 
+        # Статусбар камеры: зелёный «подключено», жёлтый «разорвано», пусто — иначе.
+        self._camera_status_lbl = ctk.CTkLabel(
+            header, text="", font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self._camera_status_lbl.grid(row=0, column=1, sticky="e", padx=16)
+
         self._clock_lbl = ctk.CTkLabel(
             header,
             text="",
@@ -113,6 +122,40 @@ class App(ctk.CTk):
         )
         self._clock_lbl.grid(row=0, column=2, padx=18, sticky="e")
         self._tick()
+
+    def _build_camera_banner(self) -> None:
+        """Заметная плашка об обрыве связи с камерой; скрыта по умолчанию."""
+        self._camera_banner = ctk.CTkFrame(
+            self, fg_color=C["danger_h"], corner_radius=0, height=38
+        )
+        self._camera_banner.grid(row=1, column=0, sticky="ew")
+        self._camera_banner.grid_propagate(False)
+        self._camera_banner.grid_remove()
+
+        ctk.CTkLabel(
+            self._camera_banner,
+            text="⚠  Соединение с камерой разорвано. Автоматический учёт не работает. Регистрируйте события вручную",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=C["yellow"],
+        ).pack(pady=9, padx=16, anchor="w")
+
+    def _update_camera_banners(self) -> None:
+        """Обновить статусбар в шапке и баннер обрыва по состоянию камеры."""
+        state = self._camera_state
+        if state == "connected":
+            self._camera_status_lbl.configure(
+                text="Камера подключена", text_color=C["green"]
+            )
+            self._camera_banner.grid_remove()
+        elif state == "error":
+            self._camera_status_lbl.configure(
+                text="Соединение с камерой разорвано. События не регистрируются автоматически",
+                text_color=C["yellow"],
+            )
+            self._camera_banner.grid()
+        else:
+            self._camera_status_lbl.configure(text="")
+            self._camera_banner.grid_remove()
 
     def _tick(self) -> None:
         """Обновить часы и перепланировать себя каждую секунду."""
@@ -239,6 +282,7 @@ class App(ctk.CTk):
         self._camera_listener.start()
         logger.info("Camera listener started on %s", host)
         self._tabs["settings"].update_status()
+        self._update_camera_banners()
         if not self._camera_polling:
             self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
             self._camera_polling = True
@@ -252,6 +296,7 @@ class App(ctk.CTk):
         self._camera_host = ""
         self._camera_state = ""
         self._tabs["settings"].update_status()
+        self._update_camera_banners()
 
     def _drain_camera_status(self) -> None:
         """Перенести статусы из потока камеры в состояние приложения."""
@@ -269,6 +314,7 @@ class App(ctk.CTk):
             pass
         if changed:
             self._tabs["settings"].update_status()
+            self._update_camera_banners()
 
     def _poll_camera_queue(self) -> None:
         """Забрать распознанные номера и переключить статус подходящих ТС."""

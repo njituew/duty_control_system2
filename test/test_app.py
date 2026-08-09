@@ -143,6 +143,60 @@ def test_drain_camera_status_last_wins(app) -> None:
     assert app._camera_state == "error"
 
 
+_BANNER_TEXT = (
+    "Соединение с камерой разорвано. Автоматический учёт не работает. "
+    "Регистрируйте события вручную"
+)
+_STATUSBAR_ERROR_TEXT = (
+    "Соединение с камерой разорвано. События не регистрируются автоматически"
+)
+
+
+def test_indicators_hidden_when_never_connected(app) -> None:
+    """Без камеры статусбар пуст и баннер обрыва скрыт."""
+    assert app._camera_status_lbl.cget("text") == ""
+    assert app._camera_banner.grid_info() == {}
+
+
+def test_banner_and_statusbar_shown_on_error(app) -> None:
+    """Обрыв (или неудачное автоподключение) показывает банер и жёлтый статус."""
+    app._camera_status_queue = queue.Queue()
+    app._camera_status_queue.put("error")
+
+    app._drain_camera_status()
+
+    assert app._camera_state == "error"
+    assert app._camera_status_lbl.cget("text") == _STATUSBAR_ERROR_TEXT
+    assert app._camera_status_lbl.cget("text_color") == C["yellow"]
+    assert app._camera_banner.grid_info() != {}
+    assert _BANNER_TEXT in app._camera_banner.winfo_children()[0].cget("text")
+
+
+def test_statusbar_connected_green(app) -> None:
+    """Успешное подключение гаснёт банер и показывает зелёный статус."""
+    app._camera_status_queue = queue.Queue()
+    app._camera_status_queue.put("connected")
+
+    app._drain_camera_status()
+
+    assert app._camera_status_lbl.cget("text") == "Камера подключена"
+    assert app._camera_status_lbl.cget("text_color") == C["green"]
+    assert app._camera_banner.grid_info() == {}
+
+
+def test_manual_disconnect_hides_banners(app) -> None:
+    """Ручное отключение от камеры скрывает банер и очищает статусбар."""
+    app._camera_status_queue = queue.Queue()
+    app._camera_status_queue.put("error")
+    app._drain_camera_status()
+    assert app._camera_banner.grid_info() != {}
+
+    app._stop_camera_listener()
+
+    assert app._camera_status_lbl.cget("text") == ""
+    assert app._camera_banner.grid_info() == {}
+
+
 # ---- Навигация вкладок ----
 
 
