@@ -75,6 +75,57 @@ def test_consume_parts_frameless_keeps_partial() -> None:
     assert tail == partial
 
 
+# ---- _consume_parts (заголовки с голыми LF — другая прошивка камеры) ----
+
+
+def _lf_part(body: bytes) -> bytes:
+    """Часть, где заголовки заканчиваются \n\n вместо \r\n\r\n."""
+    return (
+        BOUNDARY
+        + b"\n"
+        + b"Content-Type: text/plain\nContent-Length: "
+        + str(len(body)).encode()
+        + b"\n\n"
+        + body
+        + b"\n"
+    )
+
+
+def test_consume_parts_lf_headers_handles_all() -> None:
+    listener, events = _listener()
+    buffer = _lf_part(EVENT_1) + _lf_part(EVENT_2)
+
+    tail = listener._consume_parts(buffer, BOUNDARY)
+
+    assert _drain(events) == ["0010", "4414"]
+    assert tail == b"\n"
+
+
+def test_consume_parts_lf_and_crlf_mixed() -> None:
+    """LF-часть и CRLF-часть в одном потоке разбираются корректно."""
+    listener, events = _listener()
+    buffer = _lf_part(EVENT_1) + _frameless_part(EVENT_2) + BOUNDARY
+
+    tail = listener._consume_parts(buffer, BOUNDARY)
+
+    assert _drain(events) == ["0010", "4414"]
+    assert tail == BOUNDARY
+
+
+def test_consume_parts_raises_after_buffer_limit(monkeypatch) -> None:
+    """Заголовки без терминатора накапливаются, но не вечно: растёт буфер —
+    исключение вместо зависания (цикл переподключения получает 'error')."""
+    monkeypatch.setattr("camera.camera_client._MAX_BUFFER_BYTES", 64)
+    listener, _ = _listener()
+    part = BOUNDARY + b"\nContent-Type: text/plain\n" + b"padding-13"
+
+    tail = listener._consume_parts(part, BOUNDARY)
+    assert tail == part  # хвост без терминатора сохранён
+
+    with pytest.raises(RuntimeError):
+        listener._consume_parts(tail + b"x" * 40, BOUNDARY)
+
+
 # ---- _handle_part ----
 
 

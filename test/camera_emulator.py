@@ -82,6 +82,9 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         self._pts_counter = 42960639840.0
         self._real_utc_base = 1785762816
 
+        # True — слать части с LF-заголовками (другая прошивка камеры).
+        self.lf_headers = False
+
     # ---- Жизненный цикл ----
 
     @property
@@ -191,14 +194,25 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
     # ---- Формат частей мультипартного потока ----
 
     @staticmethod
-    def build_part(body: bytes) -> bytes:
-        """Одна часть потока: разделитель + заголовки + тело (как у камеры)."""
+    def build_part(body: bytes, lf_headers: bool = False) -> bytes:
+        """Одна часть потока: разделитель + заголовки + тело (как у камеры).
+
+        По умолчанию заголовки с CRLF (реальная камера); lf_headers=True —
+        голые LF, как могут слать другие прошивки.
+        """
         boundary = f"--{BOUNDARY}".encode()
-        headers = (
-            b"Content-Type: text/plain\r\n"
-            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n"
-        )
-        return boundary + b"\r\n" + headers + body + b"\r\n"
+        if lf_headers:
+            headers = (
+                b"Content-Type: text/plain\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\n\n"
+            )
+        else:
+            headers = (
+                b"Content-Type: text/plain\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n"
+            )
+        eol = b"\n" if lf_headers else b"\r\n"
+        return boundary + eol + headers + body + eol
 
     # ---- Генерация события камеры (детерминированная копия образца) ----
 
@@ -544,7 +558,9 @@ class _CameraHandler(http.server.BaseHTTPRequestHandler):
             except queue.Empty:
                 continue
             try:
-                self.wfile.write(self._chunked(server.build_part(body)))
+                self.wfile.write(
+                    self._chunked(server.build_part(body, lf_headers=server.lf_headers))
+                )
                 self.wfile.flush()
             except OSError:
                 return  # клиент закрыл соединение

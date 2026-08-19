@@ -25,6 +25,10 @@ _PLATE_NUMBER_RE = re.compile(r'"PlateNumber"\s*:\s*"([^"\\]*)"')
 _MIN_RECONNECT_DELAY = 3
 _MAX_RECONNECT_DELAY = 60
 
+# Защита от неограниченного роста буфера при невалидном потоке
+# (заголовки без терминатора, мусор) вместо вечного зависания.
+_MAX_BUFFER_BYTES = 2_000_000
+
 
 def _extract_plate(body: bytes) -> str | None:
     """Извлекает TrafficCar.PlateNumber из одного тела мультипартного события.
@@ -181,18 +185,31 @@ class CameraListener:
     def _consume_parts(self, buffer: bytes, boundary: bytes) -> bytes:
         """Извлекает каждую завершённую часть из буфера, возвращает необработанный хвост."""
         while True:
+            if len(buffer) > _MAX_BUFFER_BYTES:
+                raise RuntimeError(
+                    f"Буфер потока камеры превысил лимит ({_MAX_BUFFER_BYTES} байт)"
+                )
+
             start = buffer.find(boundary)
             if start == -1:
                 return buffer
 
             headers_start = start + len(boundary)
-            headers_end = buffer.find(b"\r\n\r\n", headers_start)
+            # Конец заголовков: CRLF (штатно) или голый LF (некоторые прошивки).
+            crlf_end = buffer.find(b"\r\n\r\n", headers_start)
+            lf_end = buffer.find(b"\n\n", headers_start)
+            if crlf_end == -1:
+                headers_end, term_len = lf_end, 2
+            elif lf_end == -1 or crlf_end < lf_end:
+                headers_end, term_len = crlf_end, 4
+            else:
+                headers_end, term_len = lf_end, 2
             if headers_end == -1:
                 return buffer  # заголовки ещё не получены полностью
 
             header_block = buffer[headers_start:headers_end]
             length_match = _CONTENT_LENGTH_RE.search(header_block)
-            body_start = headers_end + 4
+            body_start = headers_end + term_len
 
             if length_match:
                 body_length = int(length_match.group(1))

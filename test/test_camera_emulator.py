@@ -195,6 +195,19 @@ def test_garbage_events_are_skipped(emulator, monkeypatch) -> None:
     assert got == ["0097"]
 
 
+def test_accepts_lf_framed_parts(emulator, monkeypatch) -> None:
+    """Другая прошивка шлёт части с LF-заголовками — события всё равно доходят."""
+    emulator.lf_headers = True
+    emulator.push_event("PC00970")
+
+    listener, events, _ = _make_listener(emulator, monkeypatch)
+    listener.start()
+    try:
+        assert events.get(timeout=3) == "0097"
+    finally:
+        listener.stop()
+
+
 # ---- Переподключение ----
 
 
