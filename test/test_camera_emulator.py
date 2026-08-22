@@ -69,7 +69,9 @@ def test_receives_normalized_plates_from_camera(emulator, monkeypatch) -> None:
     """Камера шлёт реальные номера — очередь получает основные цифры."""
     emulator.push_event("PC00970", direction="arrival")  # из белого списка камеры
     emulator.push_event("4414CE7", direction="arrival")  # из белого списка камеры
-    emulator.push_event("10010PC", direction="departure")  # слепой знак из реального потока
+    emulator.push_event(
+        "10010PC", direction="departure"
+    )  # слепой знак из реального потока
 
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()

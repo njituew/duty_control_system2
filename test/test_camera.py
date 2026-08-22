@@ -20,10 +20,26 @@ from camera.camera_client import _extract_plate_and_direction
         (b'{"TrafficCar":{"Other":1}}', None, None),
         (b'{"TrafficCar":"oops"}', None, None),
         # Tests with direction
-        (b'{"JunctionDirection":"Obverse","TrafficCar":{"PlateNumber":"1234"}}', "1234", "arrival"),
-        (b'{"DrivingDirection":["Approach","",""],"TrafficCar":{"PlateNumber":"5678"}}', "5678", "arrival"),
-        (b'{"JunctionDirection":"Reverse","TrafficCar":{"PlateNumber":"9012"}}', "9012", "departure"),
-        (b'{"DrivingDirection":["Leave","",""],"TrafficCar":{"PlateNumber":"3456"}}', "3456", "departure"),
+        (
+            b'{"JunctionDirection":"Obverse","TrafficCar":{"PlateNumber":"1234"}}',
+            "1234",
+            "arrival",
+        ),
+        (
+            b'{"DrivingDirection":["Approach","",""],"TrafficCar":{"PlateNumber":"5678"}}',
+            "5678",
+            "arrival",
+        ),
+        (
+            b'{"JunctionDirection":"Reverse","TrafficCar":{"PlateNumber":"9012"}}',
+            "9012",
+            "departure",
+        ),
+        (
+            b'{"DrivingDirection":["Leave","",""],"TrafficCar":{"PlateNumber":"3456"}}',
+            "3456",
+            "departure",
+        ),
     ],
     ids=[
         "valid-json",
@@ -43,7 +59,9 @@ from camera.camera_client import _extract_plate_and_direction
         "departure-driving-leave",
     ],
 )
-def test_extract_plate_and_direction(body: bytes, expected_plate: str | None, expected_direction: str | None) -> None:
+def test_extract_plate_and_direction(
+    body: bytes, expected_plate: str | None, expected_direction: str | None
+) -> None:
     """Разбор тела события: валидный JSON, обёртка data=, regex и мусор."""
     plate, direction = _extract_plate_and_direction(body)
     assert plate == expected_plate

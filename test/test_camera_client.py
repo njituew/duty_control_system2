@@ -12,12 +12,20 @@ EVENT_1 = b'{"TrafficCar":{"PlateNumber":"10010PC"}}'
 EVENT_2 = b'{"TrafficCar":{"PlateNumber":"4414CE7"}}'
 
 # События с направлением прибытия
-EVENT_ARRIVAL_OBVERSE = b'{"JunctionDirection":"Obverse","TrafficCar":{"PlateNumber":"1234"}}'
-EVENT_ARRIVAL_APPROACH = b'{"DrivingDirection":["Approach","",""],"TrafficCar":{"PlateNumber":"5678"}}'
+EVENT_ARRIVAL_OBVERSE = (
+    b'{"JunctionDirection":"Obverse","TrafficCar":{"PlateNumber":"1234"}}'
+)
+EVENT_ARRIVAL_APPROACH = (
+    b'{"DrivingDirection":["Approach","",""],"TrafficCar":{"PlateNumber":"5678"}}'
+)
 
 # События с направлением убытия
-EVENT_DEPARTURE_REVERSE = b'{"JunctionDirection":"Reverse","TrafficCar":{"PlateNumber":"9012"}}'
-EVENT_DEPARTURE_LEAVE = b'{"DrivingDirection":["Leave","",""],"TrafficCar":{"PlateNumber":"3456"}}'
+EVENT_DEPARTURE_REVERSE = (
+    b'{"JunctionDirection":"Reverse","TrafficCar":{"PlateNumber":"9012"}}'
+)
+EVENT_DEPARTURE_LEAVE = (
+    b'{"DrivingDirection":["Leave","",""],"TrafficCar":{"PlateNumber":"3456"}}'
+)
 
 # Событие без направления
 EVENT_NO_DIRECTION = b'{"TrafficCar":{"PlateNumber":"7777"}}'
@@ -65,7 +73,9 @@ def _listener() -> tuple[CameraListener, queue.Queue]:
         "no-direction",
     ],
 )
-def test_extract_plate_and_direction(body: bytes, expected_plate: str, expected_direction: str | None) -> None:
+def test_extract_plate_and_direction(
+    body: bytes, expected_plate: str, expected_direction: str | None
+) -> None:
     plate, direction = _extract_plate_and_direction(body)
     assert plate == expected_plate
     assert direction == expected_direction

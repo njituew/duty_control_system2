@@ -328,14 +328,16 @@ class App(ctk.CTk):
                 item = self._camera_queue.get_nowait()
             except queue.Empty:
                 break
-            
+
             # Поддержка старого формата (только номер) и нового (номер, direction)
             if isinstance(item, tuple):
                 number, direction = item
             else:
                 number, direction = item, None
-            
-            logger.info("Processing camera event for number=%s, direction=%s", number, direction)
+
+            logger.info(
+                "Processing camera event for number=%s, direction=%s", number, direction
+            )
             try:
                 if direction == "arrival":
                     vehicle = self.db.set_vehicle_status_by_number(number, "arrived")

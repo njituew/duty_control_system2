@@ -34,7 +34,7 @@ _MAX_BUFFER_BYTES = 2_000_000
 
 def _extract_plate_and_direction(body: bytes) -> tuple[str | None, str | None]:
     """Извлекает TrafficCar.PlateNumber и направление движения из тела события.
-    
+
     Returns:
         (plate_number, direction) где direction:
         - "arrival" если JunctionDirection == "Obverse" ИЛИ DrivingDirection[0] == "Approach"
@@ -65,20 +65,22 @@ def _extract_plate_and_direction(body: bytes) -> tuple[str | None, str | None]:
             car = payload.get("TrafficCar")
             if isinstance(car, dict):
                 plate = car.get("PlateNumber")
-            
+
             # Определяем направление
             junction_dir = payload.get("JunctionDirection")
             driving_dir = payload.get("DrivingDirection")
-            
-            is_arrival = (
-                junction_dir == "Obverse" or
-                (isinstance(driving_dir, list) and len(driving_dir) > 0 and driving_dir[0] == "Approach")
+
+            is_arrival = junction_dir == "Obverse" or (
+                isinstance(driving_dir, list)
+                and len(driving_dir) > 0
+                and driving_dir[0] == "Approach"
             )
-            is_departure = (
-                junction_dir == "Reverse" or
-                (isinstance(driving_dir, list) and len(driving_dir) > 0 and driving_dir[0] == "Leave")
+            is_departure = junction_dir == "Reverse" or (
+                isinstance(driving_dir, list)
+                and len(driving_dir) > 0
+                and driving_dir[0] == "Leave"
             )
-            
+
             if is_arrival:
                 direction = "arrival"
             elif is_departure:
@@ -95,12 +97,12 @@ def _extract_plate_and_direction(body: bytes) -> tuple[str | None, str | None]:
         if match:
             plate = match.group(1)
             logger.info("Извлечён номер из некорректного JSON: %s", plate)
-        
+
         # Пробуем извлечь направление через regex
         if direction is None:
             jm = _JUNCTION_DIRECTION_RE.search(json_text)
             dm = _DRIVING_DIRECTION_RE.search(json_text)
-            
+
             if jm:
                 jd = jm.group(1)
                 if jd == "Obverse":
@@ -283,7 +285,9 @@ class CameraListener:
             return
         number = normalize_plate_number(plate)
         if number:
-            logger.info("Номер обнаружен: %s -> %s, direction=%s", plate, number, direction)
+            logger.info(
+                "Номер обнаружен: %s -> %s, direction=%s", plate, number, direction
+            )
             self._queue.put((number, direction))
         else:
             logger.warning("Номер не содержит цифр: %s", plate)

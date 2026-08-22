@@ -268,7 +268,9 @@ class Database:
         )
         return self.find_vehicle_by_number(number)
 
-    def set_vehicle_status_by_number(self, number: str, status: str) -> sqlite3.Row | None:
+    def set_vehicle_status_by_number(
+        self, number: str, status: str
+    ) -> sqlite3.Row | None:
         """Установить конкретный статус ТС по номеру (arrived/departed/idle).
 
         Идемпотентно: если статус уже равен заданному, изменений не происходит.
