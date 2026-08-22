@@ -2,8 +2,9 @@
 TODO.md
 .DS_Store
 scripts/mock_data_db.py
-camera_settings.json
 AGENTS.md
+camera_samples/
+database/
 
 # database
 
