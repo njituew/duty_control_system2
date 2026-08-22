@@ -56,7 +56,7 @@ def test_camera_event_flows_to_db(app, monkeypatch) -> None:
     emulator = CameraEmulator()
     emulator.start()
     try:
-        emulator.push_event("PC00970")
+        emulator.push_event("PC00970", direction="arrival")
         monkeypatch.setattr("camera.camera_client._MIN_RECONNECT_DELAY", 0.05)
         app._start_camera_listener(emulator.host, USERNAME, PASSWORD)
 
@@ -79,7 +79,7 @@ def test_unknown_plate_keeps_db_untouched(app, monkeypatch) -> None:
     emulator = CameraEmulator()
     emulator.start()
     try:
-        emulator.push_event("0010ZZ")
+        emulator.push_event("0010ZZ", direction="arrival")
         monkeypatch.setattr("camera.camera_client._MIN_RECONNECT_DELAY", 0.05)
         app._start_camera_listener(emulator.host, USERNAME, PASSWORD)
 

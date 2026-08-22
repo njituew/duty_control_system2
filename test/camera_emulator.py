@@ -120,9 +120,10 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         color: str = "Blue",
         sign: str = "Unknown",
         trust_car: bool | None = None,
+        direction: str | None = None,  # "arrival" или "departure"
     ) -> None:
         """Собрать полное событие камеры и положить его в очередь отправки."""
-        event = self.generate_event(plate, country, color, sign, trust_car)
+        event = self.generate_event(plate, country, color, sign, trust_car, direction)
         body = (
             f"Code=TrafficJunction;action=Pulse;index=0;data="
             f"{json.dumps(event, ensure_ascii=False, indent=3)}"
@@ -223,6 +224,7 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         color: str = "Blue",
         sign: str = "Unknown",
         trust_car: bool | None = None,
+        direction: str | None = None,  # "arrival" или "departure"
     ) -> dict:
         self._event_counter += 1
         self._group_counter += 1
@@ -338,6 +340,17 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         else:
             white_list = {"Enable": self._rng.choice([True, False]), "TrustCar": False}
 
+        # Определяем направление для JunctionDirection и DrivingDirection
+        if direction == "arrival":
+            junction_direction = "Obverse"
+            driving_direction = ["Approach", "", ""]
+        elif direction == "departure":
+            junction_direction = "Reverse"
+            driving_direction = ["Leave", "", ""]
+        else:
+            junction_direction = "Obverse"
+            driving_direction = ["Approach", "", ""]
+
         traffic_car = {
             "BlackList": {"Enable": False},
             "CapTime": round(utc + utc_ms / 1000.0, 3),
@@ -355,7 +368,7 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
             "DetailedAddress": "Area-Z",
             "DeviceAddress": "",
             "Direction": 0,
-            "DrivingDirection": ["Approach", "", ""],
+            "DrivingDirection": driving_direction,
             "Event": "TrafficJunction",
             "GroupID": self._group_counter,
             "IndexInGroup": 1,
@@ -467,7 +480,7 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
             "GroupID": self._group_counter,
             "Index": 0,
             "IndexInGroup": 1,
-            "JunctionDirection": "Obverse",
+            "JunctionDirection": junction_direction,
             "Lane": 0,
             "Mark": 0,
             "Name": "TrafficJunction0",

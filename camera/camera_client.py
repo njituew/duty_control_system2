@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 _CONTENT_LENGTH_RE = re.compile(rb"Content-Length:\s*(\d+)", re.IGNORECASE)
 _BOUNDARY_RE = re.compile(r"boundary=(?:\"([^\"]+)\"|([^;\s]+))", re.IGNORECASE)
 _PLATE_NUMBER_RE = re.compile(r'"PlateNumber"\s*:\s*"([^"\\]*)"')
+_JUNCTION_DIRECTION_RE = re.compile(r'"JunctionDirection"\s*:\s*"([^"\\]*)"')
+_DRIVING_DIRECTION_RE = re.compile(r'"DrivingDirection"\s*:\s*\[\s*"([^"\\]*)"')
 
 _MIN_RECONNECT_DELAY = 3
 _MAX_RECONNECT_DELAY = 60
@@ -30,14 +32,19 @@ _MAX_RECONNECT_DELAY = 60
 _MAX_BUFFER_BYTES = 2_000_000
 
 
-def _extract_plate(body: bytes) -> str | None:
-    """Извлекает TrafficCar.PlateNumber из одного тела мультипартного события.
-    Каждая часть может быть либо сырым JSON, либо обёрткой, содержащей data=<json>.
+def _extract_plate_and_direction(body: bytes) -> tuple[str | None, str | None]:
+    """Извлекает TrafficCar.PlateNumber и направление движения из тела события.
+    
+    Returns:
+        (plate_number, direction) где direction:
+        - "arrival" если JunctionDirection == "Obverse" ИЛИ DrivingDirection[0] == "Approach"
+        - "departure" если JunctionDirection == "Reverse" ИЛИ DrivingDirection[0] == "Leave"
+        - None если направление не определено
     """
     text = body.decode("utf-8", errors="ignore").strip()
     if not text:
         logger.debug("Пустое тело события камеры")
-        return None
+        return None, None
 
     if "data=" in text:
         data_pos = text.find("data=")
@@ -49,14 +56,33 @@ def _extract_plate(body: bytes) -> str | None:
     if brace_start != -1:
         json_text = json_text[brace_start:]
 
+    plate = None
+    direction = None
+
     try:
         payload, _ = json.JSONDecoder().raw_decode(json_text)
-        if not isinstance(payload, dict):
-            raise json.JSONDecodeError("Ожидался JSON-объект", json_text, 0)
-        car = payload.get("TrafficCar")
-        if isinstance(car, dict):
-            return car.get("PlateNumber")
-        return None
+        if isinstance(payload, dict):
+            car = payload.get("TrafficCar")
+            if isinstance(car, dict):
+                plate = car.get("PlateNumber")
+            
+            # Определяем направление
+            junction_dir = payload.get("JunctionDirection")
+            driving_dir = payload.get("DrivingDirection")
+            
+            is_arrival = (
+                junction_dir == "Obverse" or
+                (isinstance(driving_dir, list) and len(driving_dir) > 0 and driving_dir[0] == "Approach")
+            )
+            is_departure = (
+                junction_dir == "Reverse" or
+                (isinstance(driving_dir, list) and len(driving_dir) > 0 and driving_dir[0] == "Leave")
+            )
+            
+            if is_arrival:
+                direction = "arrival"
+            elif is_departure:
+                direction = "departure"
     except json.JSONDecodeError as exc:
         logger.debug(
             "Некорректный JSON события камеры, пробуем запасной вариант через регулярное выражение: %s; тело=%r",
@@ -64,17 +90,37 @@ def _extract_plate(body: bytes) -> str | None:
             json_text[:300],
         )
 
-    match = _PLATE_NUMBER_RE.search(json_text)
-    if match:
-        plate = match.group(1)
-        logger.info("Извлечён номер из некорректного JSON: %s", plate)
-        return plate
+    if plate is None:
+        match = _PLATE_NUMBER_RE.search(json_text)
+        if match:
+            plate = match.group(1)
+            logger.info("Извлечён номер из некорректного JSON: %s", plate)
+        
+        # Пробуем извлечь направление через regex
+        if direction is None:
+            jm = _JUNCTION_DIRECTION_RE.search(json_text)
+            dm = _DRIVING_DIRECTION_RE.search(json_text)
+            
+            if jm:
+                jd = jm.group(1)
+                if jd == "Obverse":
+                    direction = "arrival"
+                elif jd == "Reverse":
+                    direction = "departure"
+            elif dm:
+                dd = dm.group(1)
+                if dd == "Approach":
+                    direction = "arrival"
+                elif dd == "Leave":
+                    direction = "departure"
 
-    logger.warning(
-        "Некорректный JSON события камеры, пропускаем; тело=%r",
-        json_text[:300],
-    )
-    return None
+    if plate is None:
+        logger.warning(
+            "Некорректный JSON события камеры, пропускаем; тело=%r",
+            json_text[:300],
+        )
+
+    return plate, direction
 
 
 class CameraListener:
@@ -231,13 +277,13 @@ class CameraListener:
             buffer = buffer[next_boundary:]
 
     def _handle_part(self, body: bytes) -> None:
-        plate = _extract_plate(body)
+        plate, direction = _extract_plate_and_direction(body)
         if not plate:
             logger.debug("Часть события камеры не содержала номерного знака")
             return
         number = normalize_plate_number(plate)
         if number:
-            logger.info("Номер обнаружен: %s -> %s", plate, number)
-            self._queue.put(number)
+            logger.info("Номер обнаружен: %s -> %s, direction=%s", plate, number, direction)
+            self._queue.put((number, direction))
         else:
             logger.warning("Номер не содержит цифр: %s", plate)
