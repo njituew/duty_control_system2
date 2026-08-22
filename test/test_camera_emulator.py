@@ -67,9 +67,9 @@ def _drain_timeout(
 
 def test_receives_normalized_plates_from_camera(emulator, monkeypatch) -> None:
     """Камера шлёт реальные номера — очередь получает основные цифры."""
-    emulator.push_event("PC00970")  # из белого списка камеры
-    emulator.push_event("4414CE7")  # из белого списка камеры
-    emulator.push_event("10010PC")  # слепой знак из реального потока
+    emulator.push_event("PC00970", direction="arrival")  # из белого списка камеры
+    emulator.push_event("4414CE7", direction="arrival")  # из белого списка камеры
+    emulator.push_event("10010PC", direction="departure")  # слепой знак из реального потока
 
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()
@@ -78,7 +78,7 @@ def test_receives_normalized_plates_from_camera(emulator, monkeypatch) -> None:
     finally:
         listener.stop()
 
-    assert got == ["0097", "4414", "0010"]
+    assert got == [("0097", "arrival"), ("4414", "arrival"), ("0010", "departure")]
 
 
 def test_reports_connected_status(emulator, monkeypatch) -> None:
@@ -117,22 +117,24 @@ def test_attach_uses_chunked_transfer_encoding(emulator) -> None:
 
 
 def test_event_pipeline_updates_vehicle_status(emulator, db, monkeypatch) -> None:
-    """Событие камеры -> очередь -> переключение статуса ТС в БД."""
+    """Событие камеры -> очередь -> установка статуса ТС в БД по направлению."""
     db.add_vehicle("ВС 0097-7")  # нормализованный номер = "0097"
 
-    emulator.push_event("PC00970")
+    emulator.push_event("PC00970", direction="arrival")
 
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        number = events.get(timeout=3)
+        number, direction = events.get(timeout=3)
     finally:
         listener.stop()
 
     assert number == "0097"
+    assert direction == "arrival"
     assert db.find_vehicle_by_number(number)["status"] == "idle"
 
-    vehicle = db.toggle_vehicle_status_by_number(number)
+    # Теперь проверяем установку статуса через новый метод
+    vehicle = db.set_vehicle_status_by_number(number, "arrived")
     assert vehicle["status"] == "arrived"
     assert db.find_vehicle_by_number("ВС 0097-7")["status"] == "arrived"
 
@@ -181,7 +183,7 @@ def test_attach_returns_consistent_body(emulator) -> None:
 def test_garbage_events_are_skipped(emulator, monkeypatch) -> None:
     """Мусорные части не ломают поток и не попадают в очередь."""
     emulator.push_raw(b"data=not-json-at-all")
-    emulator.push_event("PC00970")
+    emulator.push_event("PC00970", direction="arrival")
     emulator.push_raw(b"")
 
     listener, events, _ = _make_listener(emulator, monkeypatch)
@@ -192,18 +194,18 @@ def test_garbage_events_are_skipped(emulator, monkeypatch) -> None:
         listener.stop()
 
     # Валидное событие прошло, мусор проглочен слушателем
-    assert got == ["0097"]
+    assert got == [("0097", "arrival")]
 
 
 def test_accepts_lf_framed_parts(emulator, monkeypatch) -> None:
     """Другая прошивка шлёт части с LF-заголовками — события всё равно доходят."""
     emulator.lf_headers = True
-    emulator.push_event("PC00970")
+    emulator.push_event("PC00970", direction="departure")
 
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        assert events.get(timeout=3) == "0097"
+        assert events.get(timeout=3) == ("0097", "departure")
     finally:
         listener.stop()
 
@@ -216,8 +218,8 @@ def test_reconnects_after_server_restart(emulator, monkeypatch) -> None:
     listener, events, statuses = _make_listener(emulator, monkeypatch)
     listener.start()
 
-    emulator.push_event("PC00970")
-    assert events.get(timeout=3) == "0097"
+    emulator.push_event("PC00970", direction="arrival")
+    assert events.get(timeout=3) == ("0097", "arrival")
 
     # Глушим сервер: listener уходит в error на следующей попытке
     emulator.stop()
@@ -236,8 +238,8 @@ def test_reconnects_after_server_restart(emulator, monkeypatch) -> None:
     restarted = CameraEmulator(host="127.0.0.1", port=emulator.port)
     restarted.start()
     try:
-        restarted.push_event("4414CE7")
-        assert events.get(timeout=3) == "4414"
+        restarted.push_event("4414CE7", direction="departure")
+        assert events.get(timeout=3) == ("4414", "departure")
     finally:
         restarted.stop()
         listener.stop()

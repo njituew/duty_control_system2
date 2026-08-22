@@ -4,12 +4,23 @@ import queue
 
 import pytest
 
-from camera.camera_client import CameraListener
+from camera.camera_client import CameraListener, _extract_plate_and_direction
 
 BOUNDARY = b"--myboundary"
 
 EVENT_1 = b'{"TrafficCar":{"PlateNumber":"10010PC"}}'
 EVENT_2 = b'{"TrafficCar":{"PlateNumber":"4414CE7"}}'
+
+# События с направлением прибытия
+EVENT_ARRIVAL_OBVERSE = b'{"JunctionDirection":"Obverse","TrafficCar":{"PlateNumber":"1234"}}'
+EVENT_ARRIVAL_APPROACH = b'{"DrivingDirection":["Approach","",""],"TrafficCar":{"PlateNumber":"5678"}}'
+
+# События с направлением убытия
+EVENT_DEPARTURE_REVERSE = b'{"JunctionDirection":"Reverse","TrafficCar":{"PlateNumber":"9012"}}'
+EVENT_DEPARTURE_LEAVE = b'{"DrivingDirection":["Leave","",""],"TrafficCar":{"PlateNumber":"3456"}}'
+
+# Событие без направления
+EVENT_NO_DIRECTION = b'{"TrafficCar":{"PlateNumber":"7777"}}'
 
 # Часть без Content-Length — как камера иногда шлёт пустые/небрежные части.
 
@@ -19,7 +30,7 @@ def _frameless_part(body: bytes) -> bytes:
 
 
 def _listener() -> tuple[CameraListener, queue.Queue]:
-    events: queue.Queue[str] = queue.Queue()
+    events: queue.Queue[tuple[str, str | None]] = queue.Queue()
     listener = CameraListener(
         host="127.0.0.1:1",
         user="admin",
@@ -28,6 +39,36 @@ def _listener() -> tuple[CameraListener, queue.Queue]:
         event_queue=events,
     )
     return listener, events
+
+
+# ---- _extract_plate_and_direction ----
+
+
+@pytest.mark.parametrize(
+    "body,expected_plate,expected_direction",
+    [
+        (EVENT_1, "10010PC", None),
+        (EVENT_2, "4414CE7", None),
+        (EVENT_ARRIVAL_OBVERSE, "1234", "arrival"),
+        (EVENT_ARRIVAL_APPROACH, "5678", "arrival"),
+        (EVENT_DEPARTURE_REVERSE, "9012", "departure"),
+        (EVENT_DEPARTURE_LEAVE, "3456", "departure"),
+        (EVENT_NO_DIRECTION, "7777", None),
+    ],
+    ids=[
+        "basic",
+        "basic-2",
+        "arrival-junction-obverse",
+        "arrival-driving-approach",
+        "departure-junction-reverse",
+        "departure-driving-leave",
+        "no-direction",
+    ],
+)
+def test_extract_plate_and_direction(body: bytes, expected_plate: str, expected_direction: str | None) -> None:
+    plate, direction = _extract_plate_and_direction(body)
+    assert plate == expected_plate
+    assert direction == expected_direction
 
 
 # ---- _resolve_boundary ----
@@ -60,7 +101,7 @@ def test_consume_parts_frameless_handles_all() -> None:
     # Закрывающий разделитель без тела остаётся в буфере: клиент ждёт
     # заголовков следующей части, пока поток сам не завершится.
     assert tail == BOUNDARY
-    assert _drain(events) == ["0010", "4414"]
+    assert _drain(events) == [("0010", None), ("4414", None)]
 
 
 def test_consume_parts_frameless_keeps_partial() -> None:
@@ -71,7 +112,7 @@ def test_consume_parts_frameless_keeps_partial() -> None:
     tail = listener._consume_parts(complete + partial, BOUNDARY)
 
     # Первая часть обработана, неготовый хвост сохранён без потерь.
-    assert _drain(events) == ["0010"]
+    assert _drain(events) == [("0010", None)]
     assert tail == partial
 
 
@@ -97,7 +138,7 @@ def test_consume_parts_lf_headers_handles_all() -> None:
 
     tail = listener._consume_parts(buffer, BOUNDARY)
 
-    assert _drain(events) == ["0010", "4414"]
+    assert _drain(events) == [("0010", None), ("4414", None)]
     assert tail == b"\n"
 
 
@@ -108,7 +149,7 @@ def test_consume_parts_lf_and_crlf_mixed() -> None:
 
     tail = listener._consume_parts(buffer, BOUNDARY)
 
-    assert _drain(events) == ["0010", "4414"]
+    assert _drain(events) == [("0010", None), ("4414", None)]
     assert tail == BOUNDARY
 
 
@@ -133,7 +174,21 @@ def test_handle_part_normalizes_plate() -> None:
     listener, events = _listener()
     listener._handle_part(EVENT_1)
 
-    assert _drain(events) == ["0010"]
+    assert _drain(events) == [("0010", None)]
+
+
+def test_handle_part_with_arrival_direction() -> None:
+    listener, events = _listener()
+    listener._handle_part(EVENT_ARRIVAL_OBVERSE)
+
+    assert _drain(events) == [("1234", "arrival")]
+
+
+def test_handle_part_with_departure_direction() -> None:
+    listener, events = _listener()
+    listener._handle_part(EVENT_DEPARTURE_REVERSE)
+
+    assert _drain(events) == [("9012", "departure")]
 
 
 def test_handle_part_skips_invalid_bodies() -> None:
@@ -145,7 +200,7 @@ def test_handle_part_skips_invalid_bodies() -> None:
     assert _drain(events) == []
 
 
-def _drain(events: queue.Queue) -> list[str]:
+def _drain(events: queue.Queue) -> list[tuple[str, str | None]]:
     got = []
     while True:
         try:

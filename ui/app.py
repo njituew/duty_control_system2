@@ -317,7 +317,7 @@ class App(ctk.CTk):
             self._update_camera_banners()
 
     def _poll_camera_queue(self) -> None:
-        """Забрать распознанные номера и переключить статус подходящих ТС."""
+        """Забрать распознанные номера и установить статус подходящих ТС по направлению."""
         if getattr(self, "_camera_listener", None) is None:
             self._camera_polling = False
             return
@@ -325,12 +325,25 @@ class App(ctk.CTk):
         changed = False
         while True:
             try:
-                number = self._camera_queue.get_nowait()
+                item = self._camera_queue.get_nowait()
             except queue.Empty:
                 break
-            logger.info("Processing camera event for number=%s", number)
+            
+            # Поддержка старого формата (только номер) и нового (номер, direction)
+            if isinstance(item, tuple):
+                number, direction = item
+            else:
+                number, direction = item, None
+            
+            logger.info("Processing camera event for number=%s, direction=%s", number, direction)
             try:
-                vehicle = self.db.toggle_vehicle_status_by_number(number)
+                if direction == "arrival":
+                    vehicle = self.db.set_vehicle_status_by_number(number, "arrived")
+                elif direction == "departure":
+                    vehicle = self.db.set_vehicle_status_by_number(number, "departed")
+                else:
+                    # Fallback: старый цикл переключения для совместимости
+                    vehicle = self.db.toggle_vehicle_status_by_number(number)
             except DatabaseError:
                 logger.exception("Failed to update vehicle status from camera event")
                 continue
