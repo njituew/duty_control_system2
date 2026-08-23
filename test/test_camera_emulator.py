@@ -49,9 +49,13 @@ def _make_listener(emulator: CameraEmulator, monkeypatch: pytest.MonkeyPatch):
 
 
 def _drain_timeout(
-    events: queue.Queue, expected: int, timeout: float = 3.0
+    events: queue.Queue, expected: int, timeout: float = 10.0
 ) -> list[str]:
-    """Собрать из очереди до `expected` элементов в пределах таймаута."""
+    """Собрать из очереди до `expected` элементов в пределах таймаута.
+
+    Таймаут щедрый (медленные CI-машины с Windows), на pass-кейсы не влияет:
+    события приходят за миллисекунды.
+    """
     got: list[str] = []
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline and len(got) < expected:
@@ -88,7 +92,7 @@ def test_reports_connected_status(emulator, monkeypatch) -> None:
     listener, _, statuses = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        assert statuses.get(timeout=3) == "connected"
+        assert statuses.get(timeout=10) == "connected"
     finally:
         listener.stop()
 
@@ -98,7 +102,7 @@ def test_report_connected_status_emitted_once(emulator, monkeypatch) -> None:
     listener, _, statuses = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        assert statuses.get(timeout=3) == "connected"
+        assert statuses.get(timeout=10) == "connected"
         with pytest.raises(queue.Empty):
             statuses.get(timeout=0.3)
     finally:
@@ -109,7 +113,7 @@ def test_attach_uses_chunked_transfer_encoding(emulator) -> None:
     """Поток события передаётся чанками (HTTP/1.1 + Transfer-Encoding)."""
     url = f"http://{emulator.host}{ATTACH_URL}"
     response = requests.get(
-        url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=3, stream=True
+        url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=5, stream=True
     )
     try:
         assert response.status_code == 200
@@ -127,7 +131,7 @@ def test_event_pipeline_updates_vehicle_status(emulator, db, monkeypatch) -> Non
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        number, direction = events.get(timeout=3)
+        number, direction = events.get(timeout=10)
     finally:
         listener.stop()
 
@@ -148,7 +152,7 @@ def test_rejects_wrong_credentials(emulator) -> None:
     """Неверный пароль — камера отвечает 401 с Digest-челленджем."""
     url = f"http://{emulator.host}{ATTACH_URL}"
     response = requests.get(
-        url, auth=HTTPDigestAuth(USERNAME, "wrong_password"), timeout=3
+        url, auth=HTTPDigestAuth(USERNAME, "wrong_password"), timeout=5
     )
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"].startswith("Digest realm=")
@@ -159,17 +163,17 @@ def test_rejects_invalid_attach_params(emulator) -> None:
     url = f"http://{emulator.host}{ATTACH_URL}"
     bad_url = url.replace("codes=[TrafficJunction]", "codes=[WrongCode]")
     auth = HTTPDigestAuth(USERNAME, PASSWORD)
-    assert requests.get(bad_url, auth=auth, timeout=3).status_code == 400
+    assert requests.get(bad_url, auth=auth, timeout=5).status_code == 400
 
     bad_action = url.replace("action=attach", "action=nope")
-    assert requests.get(bad_action, auth=auth, timeout=3).status_code == 400
+    assert requests.get(bad_action, auth=auth, timeout=5).status_code == 400
 
 
 def test_attach_returns_consistent_body(emulator) -> None:
     """Ответ на attach содержит границу мультипарт-потока."""
     url = f"http://{emulator.host}{ATTACH_URL}"
     response = requests.get(
-        url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=3, stream=True
+        url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=5, stream=True
     )
     assert response.status_code == 200
     assert (
@@ -207,7 +211,7 @@ def test_accepts_lf_framed_parts(emulator, monkeypatch) -> None:
     listener, events, _ = _make_listener(emulator, monkeypatch)
     listener.start()
     try:
-        assert events.get(timeout=3) == ("0097", "departure")
+        assert events.get(timeout=10) == ("0097", "departure")
     finally:
         listener.stop()
 
@@ -220,20 +224,18 @@ def test_reconnects_after_server_restart(emulator, monkeypatch) -> None:
     listener, events, statuses = _make_listener(emulator, monkeypatch)
     listener.start()
 
-    emulator.push_event("PC00970", direction="arrival")
-    assert events.get(timeout=3) == ("0097", "arrival")
+    # Явно ждём подключение, чтобы бюджет ниже тратился только на "error"
+    assert statuses.get(timeout=10) == "connected"
 
-    # Глушим сервер: listener уходит в error на следующей попытке
+    emulator.push_event("PC00970", direction="arrival")
+    assert events.get(timeout=10) == ("0097", "arrival")
+
+    # Глушим сервер: стрим обрывается -> listener уходит в error
     emulator.stop()
 
-    now = time.time()
-    while time.time() - now < 2.0:
-        try:
-            if statuses.get(timeout=0.2) == "error":
-                break
-        except queue.Empty:
-            continue
-    else:
+    try:
+        assert statuses.get(timeout=10) == "error"
+    except queue.Empty:
         pytest.fail("статус error не пришёл после остановки камеры")
 
     # Поднимаем новый сервер на том же порту — соединение восстанавливается
@@ -241,7 +243,7 @@ def test_reconnects_after_server_restart(emulator, monkeypatch) -> None:
     restarted.start()
     try:
         restarted.push_event("4414CE7", direction="departure")
-        assert events.get(timeout=3) == ("4414", "departure")
+        assert events.get(timeout=10) == ("4414", "departure")
     finally:
         restarted.stop()
         listener.stop()

@@ -20,6 +20,7 @@ import json
 import queue
 import random
 import re
+import socket
 import threading
 import time
 import urllib.parse
@@ -31,7 +32,7 @@ BOUNDARY = "myboundary"
 ATTACH_PATH = "/cgi-bin/eventManager.cgi"
 
 # Номера из белого списка — камера шлёт полностью заполненный WhiteList
-WHITE_LIST_PLATES = {"4414CE7", "PC00970"}
+WHITE_LIST_PLATES = {"4414CE7", "ТА12341"}
 
 
 def _md5(value: str) -> str:
@@ -70,6 +71,8 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         self._nonce_store: dict[str, dict] = {}
         self._nonces_lock = threading.Lock()
         self._events: queue.Queue[bytes] = queue.Queue()
+        self._streams: list[socket.socket] = []
+        self._streams_lock = threading.Lock()
         self._stop_flag = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -106,10 +109,40 @@ class CameraEmulator(http.server.ThreadingHTTPServer):
         self._thread.start()
 
     def stop(self) -> None:
-        """Останавливает accept-цикл и стримы всех активных подключений."""
+        """Гасит accept-цикл и обрывает все активные стримы.
+
+        Разрыв — мгновенный и «некрасивый» (как смерть реальной камеры):
+        клиент видит оборванный чанковый поток, а не вежливый терминальный
+        чанк, поэтому фиксирует потерю камеры сразу, а не по опросам.
+        """
         self._stop_flag.set()
+        self._abort_streams()
         self.shutdown()
         self.server_close()
+
+    def _register_stream(self, sock: socket.socket) -> None:
+        with self._streams_lock:
+            self._streams.append(sock)
+
+    def _unregister_stream(self, sock: socket.socket) -> None:
+        with self._streams_lock:
+            if sock in self._streams:
+                self._streams.remove(sock)
+
+    def _abort_streams(self) -> None:
+        """Принудительно SHUT_RDWR+close всех активных стримов."""
+        with self._streams_lock:
+            streams = self._streams[:]
+            self._streams.clear()
+        for sock in streams:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                sock.close()
+            except OSError:
+                pass
 
     # ---- Подача событий ----
 
@@ -559,26 +592,33 @@ class _CameraHandler(http.server.BaseHTTPRequestHandler):
         return hex(len(data))[2:].encode() + b"\r\n" + data + b"\r\n"
 
     def _stream_events(self, server: CameraEmulator) -> None:
-        self.send_response(200)
-        self.send_header(
-            "Content-Type", f"multipart/x-mixed-replace; boundary={BOUNDARY}"
-        )
-        self.send_header("Transfer-Encoding", "chunked")
-        self.end_headers()
-        while not server._stop_flag.is_set():
-            try:
-                body = server._events.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            try:
-                self.wfile.write(
-                    self._chunked(server.build_part(body, lf_headers=server.lf_headers))
-                )
-                self.wfile.flush()
-            except OSError:
-                return  # клиент закрыл соединение
+        server._register_stream(self.connection)
         try:
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.close()
-        except OSError:
-            pass
+            self.send_response(200)
+            self.send_header(
+                "Content-Type", f"multipart/x-mixed-replace; boundary={BOUNDARY}"
+            )
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            while not server._stop_flag.is_set():
+                try:
+                    body = server._events.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                try:
+                    self.wfile.write(
+                        self._chunked(
+                            server.build_part(body, lf_headers=server.lf_headers)
+                        )
+                    )
+                    self.wfile.flush()
+                except OSError:
+                    return  # клиент закрыл соединение
+            # Сервер останавливается: рвём соединение без терминального чанка,
+            # чтобы клиент увидел обрыв немедленно, а не «чистый» конец потока.
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        finally:
+            server._unregister_stream(self.connection)
