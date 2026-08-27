@@ -1,12 +1,7 @@
-import logging
-
+from core.logging_setup import setup_logging
 from ui.app import App
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s",
-        force=True,
-    )
+    setup_logging()
     app = App()
     app.mainloop()

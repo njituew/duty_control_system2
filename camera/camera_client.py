@@ -15,8 +15,10 @@ import requests
 from requests.auth import HTTPDigestAuth
 
 from core.plates import normalize_plate_number
+from core.logging_setup import get_camera_logger
 
 logger = logging.getLogger(__name__)
+camera_raw_logger = get_camera_logger()
 
 _CONTENT_LENGTH_RE = re.compile(rb"Content-Length:\s*(\d+)", re.IGNORECASE)
 _BOUNDARY_RE = re.compile(r"boundary=(?:\"([^\"]+)\"|([^;\s]+))", re.IGNORECASE)
@@ -213,6 +215,7 @@ class CameraListener:
                 return
             if not chunk:
                 continue
+            camera_raw_logger.debug("RAW CHUNK: %r", chunk)
             buffer += chunk
             buffer = self._consume_parts(buffer, boundary)
 

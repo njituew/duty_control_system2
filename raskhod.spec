@@ -30,6 +30,8 @@ a = Analysis(
         "packaging.version",
         "packaging.specifiers",
         "packaging.requirements",
+        "logging",
+        "logging.handlers",
     ],
 
     hookspath=[],
