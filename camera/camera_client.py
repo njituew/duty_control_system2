@@ -10,6 +10,7 @@ import logging
 import queue
 import re
 import threading
+import time
 
 import requests
 from requests.auth import HTTPDigestAuth
@@ -30,6 +31,11 @@ _MAX_RECONNECT_DELAY = 60
 # Защита от неограниченного роста буфера при невалидном потоке
 # (заголовки без терминатора, мусор) вместо вечного зависания.
 _MAX_BUFFER_BYTES = 2_000_000
+
+# Окно дедупликации событий камеры (сек). Dahua ANPR может дублировать
+# части мультипарт-потока; игнорируем повтор одного и того же (номер, направление)
+# в пределах этого интервала.
+_DEDUP_WINDOW_SECONDS = 5
 
 
 def _extract_plate_and_direction(body: bytes) -> tuple[str | None, str | None]:
@@ -151,6 +157,7 @@ class CameraListener:
         self._timeout = timeout
         self._stop_event = threading.Event()
         self._last_emitted_status: str | None = None
+        self._recent_events: dict[tuple[str, str], float] = {}
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
@@ -162,6 +169,10 @@ class CameraListener:
         """Сигнализирует слушателю об остановке и позволяет потоку завершиться."""
         logger.info("Остановка потока слушателя камеры")
         self._stop_event.set()
+
+    def join(self, timeout: float | None = None) -> None:
+        """Дождаться завершения фонового потока."""
+        self._thread.join(timeout=timeout)
 
     def _attach_url(self) -> str:
         codes = ",".join(self._codes)
@@ -284,10 +295,31 @@ class CameraListener:
             logger.debug("Часть события камеры не содержала номерного знака")
             return
         number = normalize_plate_number(plate)
-        if number:
-            logger.info(
-                "Номер обнаружен: %s -> %s, direction=%s", plate, number, direction
-            )
-            self._queue.put((number, direction))
-        else:
+        if not number:
             logger.warning("Номер не содержит цифр: %s", plate)
+            return
+
+        now = time.monotonic()
+        key = (number, direction or "")
+        last_seen = self._recent_events.get(key)
+        if last_seen is not None and (now - last_seen) < _DEDUP_WINDOW_SECONDS:
+            logger.debug(
+                "Дубль события камеры пропущен: %s -> %s, direction=%s",
+                plate,
+                number,
+                direction,
+            )
+            return
+
+        self._recent_events[key] = now
+        # Очистка устаревших записей, чтобы словарь не рос бесконечно.
+        if len(self._recent_events) > 500:
+            cutoff = now - _DEDUP_WINDOW_SECONDS
+            self._recent_events = {
+                k: v for k, v in self._recent_events.items() if v >= cutoff
+            }
+
+        logger.info(
+            "Номер обнаружен: %s -> %s, direction=%s", plate, number, direction
+        )
+        self._queue.put((number, direction))

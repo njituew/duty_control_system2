@@ -273,15 +273,13 @@ class Database:
     ) -> sqlite3.Row | None:
         """Установить конкретный статус ТС по номеру (arrived/departed/idle).
 
-        Идемпотентно: если статус уже равен заданному, изменений не происходит.
+        Всегда обновляет таймстемп и записывает событие, даже если статус
+        уже равен заданному (повторное прибытие = обновление времени).
         Возвращает обновлённую строку ТС или None, если ТС не найдено.
         """
         vehicle = self.find_vehicle_by_number(number)
         if vehicle is None:
             return None
-
-        if vehicle["status"] == status:
-            return vehicle
 
         self.update_status_and_log("vehicle", vehicle["id"], vehicle["number"], status)
         return self.find_vehicle_by_number(number)

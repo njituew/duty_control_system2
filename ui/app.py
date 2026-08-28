@@ -235,7 +235,7 @@ class App(ctk.CTk):
                 self._nav_indicators[k].grid_remove()  # hide
 
         # Вкладки истории, статистики и настроек обновляются при каждом открытии.
-        if key in ("history", "stats", "settings"):
+        if key in ("history", "stats", "settings", "accounting"):
             self._tabs[key].refresh()
 
     def _auto_connect_camera(self) -> None:
@@ -266,7 +266,7 @@ class App(ctk.CTk):
 
     def _start_camera_listener(self, host: str, user: str, password: str) -> None:
         """Запустить поток слушателя камеры и начать опрос его очередей."""
-        self._stop_camera_listener()
+        self._stop_camera_listener(join=True)
         self._camera_queue: queue.Queue[str] = queue.Queue()
         self._camera_status_queue: queue.Queue[str] = queue.Queue()
         self._camera_host = host
@@ -287,10 +287,16 @@ class App(ctk.CTk):
             self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
             self._camera_polling = True
 
-    def _stop_camera_listener(self) -> None:
-        """Остановить поток слушателя камеры, если он запущен."""
-        if getattr(self, "_camera_listener", None) is not None:
-            self._camera_listener.stop()
+    def _stop_camera_listener(self, *, join: bool = False) -> None:
+        """Остановить поток слушателя камеры, если он запущен.
+
+        Если join=True — дожидаться завершения потока (макс. 2 сек).
+        """
+        listener = getattr(self, "_camera_listener", None)
+        if listener is not None:
+            listener.stop()
+            if join:
+                listener.join(timeout=2)
             self._camera_listener = None
             logger.info("Camera listener stopped")
         self._camera_host = ""
@@ -340,11 +346,14 @@ class App(ctk.CTk):
             )
             try:
                 if direction == "arrival":
-                    vehicle = self.db.set_vehicle_status_by_number(number, "arrived")
+                    target_status = "arrived"
+                    vehicle = self.db.set_vehicle_status_by_number(number, target_status)
                 elif direction == "departure":
-                    vehicle = self.db.set_vehicle_status_by_number(number, "departed")
+                    target_status = "departed"
+                    vehicle = self.db.set_vehicle_status_by_number(number, target_status)
                 else:
                     # Fallback: старый цикл переключения для совместимости
+                    target_status = None
                     vehicle = self.db.toggle_vehicle_status_by_number(number)
             except DatabaseError:
                 logger.exception("Failed to update vehicle status from camera event")
@@ -362,7 +371,7 @@ class App(ctk.CTk):
                 )
 
         if changed:
-            self._tabs["accounting"].refresh()
+            self._tabs["accounting"].refresh(from_camera=True)
 
         self.after(CAMERA_QUEUE_POLL_MS, self._poll_camera_queue)
 

@@ -139,6 +139,72 @@ def test_toggle_unknown_number_returns_none(db: Database) -> None:
     assert db.toggle_vehicle_status_by_number("9999") is None
 
 
+# set_vehicle_status_by_number
+
+
+def test_set_vehicle_status_by_number_basic(db: Database) -> None:
+    db.add_vehicle("1234")
+
+    v = db.set_vehicle_status_by_number("1234", "arrived")
+    assert v is not None
+    assert v["status"] == "arrived"
+    assert v["updated"] is not None
+
+
+def test_set_vehicle_status_by_number_unknown_returns_none(db: Database) -> None:
+    assert db.set_vehicle_status_by_number("9999", "arrived") is None
+
+
+def test_set_vehicle_status_by_number_updates_timestamp_on_same_status(
+    db: Database, frozen_now
+) -> None:
+    """Повторное прибытие обновляет таймстемп и пишет новое событие."""
+    from datetime import datetime
+
+    db.add_vehicle("1234")
+
+    # Первое прибытие: t=10:00
+    frozen_now(datetime(2026, 1, 1, 10, 0, 0))
+    v1 = db.set_vehicle_status_by_number("1234", "arrived")
+    ts1 = v1["updated"]
+
+    # Повторное прибытие: t=11:00 — таймстемп должен обновиться
+    frozen_now(datetime(2026, 1, 1, 11, 0, 0))
+    v2 = db.set_vehicle_status_by_number("1234", "arrived")
+    ts2 = v2["updated"]
+
+    assert ts2 > ts1, (
+        f"Таймстемп должен обновиться при повторном прибытии: {ts1} -> {ts2}"
+    )
+
+    # В журнале — два события «arrived» (created + arrived1 + arrived2 ≥ 3)
+    arrivals = [
+        e for e in db.get_events() if e["event_type"] == "arrived"
+    ]
+    assert len(arrivals) >= 2, (
+        f"Должны быть ≥2 события arrived, получено: {len(arrivals)}"
+    )
+
+
+def test_set_vehicle_status_by_number_departed_then_arrived(
+    db: Database, frozen_now
+) -> None:
+    """Полный цикл: прибыл → убыл → прибыл (таймстемп обновляется)."""
+    from datetime import datetime
+
+    db.add_vehicle("1234")
+
+    frozen_now(datetime(2026, 1, 1, 10, 0, 0))
+    db.set_vehicle_status_by_number("1234", "arrived")
+    v_dep = db.set_vehicle_status_by_number("1234", "departed")
+    assert v_dep["status"] == "departed"
+
+    frozen_now(datetime(2026, 1, 1, 12, 0, 0))
+    v_arr2 = db.set_vehicle_status_by_number("1234", "arrived")
+    assert v_arr2["status"] == "arrived"
+    assert v_arr2["updated"] is not None
+
+
 # update_status_and_log и валидность статусов
 
 

@@ -97,8 +97,9 @@ class _EntitySection(ctk.CTkFrame):
         )
         self._counter_lbl.grid(row=1, column=0, sticky="w", padx=14, pady=(0, 4))
 
-    def refresh(self) -> None:
-        rows = self.db.get_entities(self.entity_type, self._search_var.get().strip())
+    def refresh(self, from_camera: bool = False) -> None:
+        search = "" if from_camera else self._search_var.get().strip()
+        rows = self.db.get_entities(self.entity_type, search)
         self._grid.populate(rows)
         self._update_counter()
 
@@ -161,9 +162,9 @@ class AccountingTab(ctk.CTkFrame):
         )
         self._section_commanders.grid(row=0, column=2, sticky="nsew")
 
-    def refresh(self) -> None:
-        self._section_vehicles.refresh()
-        self._section_commanders.refresh()
+    def refresh(self, from_camera: bool = False) -> None:
+        self._section_vehicles.refresh(from_camera=from_camera)
+        self._section_commanders.refresh(from_camera=from_camera)
 
 
 class HistoryTab(ctk.CTkFrame):
