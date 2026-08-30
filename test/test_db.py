@@ -372,3 +372,184 @@ def test_database_init_error(tmp_path) -> None:
     """Путь, указывающий на каталог, -> DatabaseError."""
     with pytest.raises(DatabaseError):
         Database(path=str(tmp_path))
+
+
+# LIKE-инъекция и экранирование спецсимволов
+
+
+def test_search_percent_literal(db: Database) -> None:
+    """Символ % в поиске ищет literal '%', а не wildcard."""
+    db.add_vehicle("100%")
+    db.add_vehicle("1005")
+
+    result = db.get_vehicles("100%")
+    numbers = [r["number"] for r in result]
+    assert "100%" in numbers
+    assert "1005" not in numbers
+
+
+def test_search_underscore_literal(db: Database) -> None:
+    """Символ _ в поиске ищет literal '_', а не wildcard."""
+    db.add_vehicle("A_B")
+    db.add_vehicle("AXB")
+
+    result = db.get_vehicles("A_B")
+    numbers = [r["number"] for r in result]
+    assert "A_B" in numbers
+    assert "AXB" not in numbers
+
+
+def test_events_search_percent_literal(db: Database) -> None:
+    """Символ % в поиске событий ищет literal '%'."""
+    db.add_vehicle("100%")
+    ev = db.get_events("100%")
+    assert len(ev) == 1
+    assert ev[0]["entity_name"] == "100%"
+
+
+def test_search_backslash_escape(db: Database) -> None:
+    """Обратный слэш экранирует спецсимволы LIKE."""
+    db.add_vehicle("C:\\Users")
+    # _escape_like converts \ to \\, then LIKE ESCAPE '\' interprets \\ as literal \
+    result = db.get_vehicles("C:\\Users")
+    assert len(result) == 1
+
+
+# close() и context manager
+
+
+def test_close_prevents_further_queries(db: Database) -> None:
+    """После close() обращение к БД вызывает DatabaseError."""
+    db.add_vehicle("1234")
+    db.close()
+
+    with pytest.raises(DatabaseError):
+        db.get_vehicles()
+
+
+def test_context_manager_closes_connection() -> None:
+    """with Database(...) as db: ... закрывает соединение при выходе."""
+    with Database(path=":memory:") as db:
+        db.add_vehicle("1234")
+        assert len(db.get_vehicles()) == 1
+
+    with pytest.raises(DatabaseError):
+        db.get_vehicles()
+
+
+def test_close_idempotent(db: Database) -> None:
+    """Повторный close() не вызывает ошибку."""
+    db.close()
+    db.close()
+
+
+# _delete_entity — обработка ошибок SQLite
+
+
+class _ErrorRaisingProxy:
+    """Proxy around sqlite3.Connection that can raise errors on specific SQL patterns."""
+
+    def __init__(self, conn, error_sql_fragment=None, error_class=sqlite3.OperationalError):
+        self._conn = conn
+        self._error_sql_fragment = error_sql_fragment
+        self._error_class = error_class
+
+    def execute(self, sql, *args, **kwargs):
+        if self._error_sql_fragment and self._error_sql_fragment in sql:
+            raise self._error_class("simulated error")
+        return self._conn.execute(sql, *args, **kwargs)
+
+    def executemany(self, sql, *args, **kwargs):
+        return self._conn.executemany(sql, *args, **kwargs)
+
+    def executescript(self, sql):
+        return self._conn.executescript(sql)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_delete_entity_handles_db_error(db: Database) -> None:
+    """Ошибка SQLite при SELECT в _delete_entity оборачивается в DatabaseError."""
+    vid = db.add_vehicle("1234")
+
+    proxy = _ErrorRaisingProxy(db._conn, error_sql_fragment="SELECT number FROM vehicles")
+    db._conn = proxy
+
+    with pytest.raises(DatabaseError, match="Failed to delete"):
+        db.delete_vehicle(vid)
+
+    db._conn = proxy._conn
+
+
+# update_status_and_log — IntegrityError
+
+
+class _SelectiveErrorProxy:
+    """Proxy that raises error on specific SQL while passing through others."""
+
+    def __init__(self, conn, error_sql_fragment=None, error_class=sqlite3.IntegrityError,
+                 skip_first_n=0):
+        self._conn = conn
+        self._error_sql_fragment = error_sql_fragment
+        self._error_class = error_class
+        self._call_count = 0
+        self._skip_first_n = skip_first_n
+
+    def execute(self, sql, *args, **kwargs):
+        self._call_count += 1
+        if (self._call_count > self._skip_first_n
+                and self._error_sql_fragment
+                and self._error_sql_fragment in sql):
+            raise self._error_class("simulated constraint")
+        return self._conn.execute(sql, *args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_update_status_and_log_integrity_error(db: Database) -> None:
+    """IntegrityError при INSERT в events оборачивается в DatabaseError."""
+    vid = db.add_vehicle("1234")
+
+    proxy = _SelectiveErrorProxy(
+        db._conn,
+        error_sql_fragment="INSERT INTO events",
+        error_class=sqlite3.IntegrityError,
+        skip_first_n=1,  # skip UPDATE, fail on INSERT
+    )
+    db._conn = proxy
+
+    with pytest.raises(DatabaseError, match="Integrity error"):
+        db.update_status_and_log("vehicle", vid, "1234", "arrived")
+
+    db._conn = proxy._conn
+    # Статус не изменился из-за отката
+    assert db.get_vehicles()[0]["status"] == "idle"
+
+
+# Проверка что _delete_entity ловит NotFoundError корректно
+
+
+def test_delete_entity_not_found_propagates(db: Database) -> None:
+    """NotFoundError от _delete_entity всплывает без оборачивания."""
+    with pytest.raises(NotFoundError):
+        db.delete_vehicle(9999)

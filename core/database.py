@@ -73,36 +73,43 @@ class Database:
         except sqlite3.Error as e:
             raise DatabaseError(f"Cannot open database '{path}': {e}") from e
 
+    _DDL_STATEMENTS: list[str] = [
+        """
+        CREATE TABLE IF NOT EXISTS vehicles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            number      TEXT    NOT NULL UNIQUE,
+            number_norm TEXT    NOT NULL DEFAULT '',
+            status      TEXT    NOT NULL DEFAULT 'idle',
+            created     TEXT    NOT NULL,
+            updated     TEXT    DEFAULT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS commanders (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            name    TEXT    NOT NULL UNIQUE,
+            status  TEXT    NOT NULL DEFAULT 'idle',
+            created TEXT    NOT NULL,
+            updated TEXT    DEFAULT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT    NOT NULL,
+            entity_id   INTEGER NOT NULL,
+            entity_name TEXT    NOT NULL,
+            event_type  TEXT    NOT NULL,
+            ts          TEXT    NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts)",
+    ]
+
     def _migrate(self) -> None:
         """Создать таблицы при первом запуске и добавить недостающие колонки."""
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS vehicles (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                number      TEXT    NOT NULL UNIQUE,
-                number_norm TEXT    NOT NULL DEFAULT '',
-                status      TEXT    NOT NULL DEFAULT 'idle',
-                created     TEXT    NOT NULL,
-                updated     TEXT    DEFAULT NULL
-            );
-            CREATE TABLE IF NOT EXISTS commanders (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                name    TEXT    NOT NULL UNIQUE,
-                status  TEXT    NOT NULL DEFAULT 'idle',
-                created TEXT    NOT NULL,
-                updated TEXT    DEFAULT NULL
-            );
-            CREATE TABLE IF NOT EXISTS events (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                entity_type TEXT    NOT NULL,
-                entity_id   INTEGER NOT NULL,
-                entity_name TEXT    NOT NULL,
-                event_type  TEXT    NOT NULL,
-                ts          TEXT    NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
-            """
-        )
+        for ddl in self._DDL_STATEMENTS:
+            self._conn.execute(ddl)
 
         # Добавляем колонки, которых может не быть в БД, созданных до их введения.
         for table in ("vehicles", "commanders"):
@@ -136,6 +143,28 @@ class Database:
 
         self._conn.commit()
 
+    def close(self) -> None:
+        """Закрыть соединение с БД."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+    def _check_conn(self) -> None:
+        """Raise DatabaseError if connection is closed."""
+        if self._conn is None:
+            raise DatabaseError("Database connection is closed.")
+
+    def __enter__(self) -> "Database":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    @staticmethod
+    def _escape_like(value: str) -> str:
+        """Экранировать спецсимволы LIKE (% и _) для безопасного поиска."""
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
     @staticmethod
     def _entity_table(entity_type: str) -> tuple[str, str]:
         """Вернуть (имя_таблицы, колонка_имени) для строки типа сущности."""
@@ -147,6 +176,7 @@ class Database:
 
     def _add_entity(self, entity_type: str, value: str) -> int:
         """Вставить новую сущность и вернуть её сгенерированный id."""
+        self._check_conn()
         table, col = self._entity_table(entity_type)
         value = value.strip()
         if not value:
@@ -176,30 +206,34 @@ class Database:
 
     def _delete_entity(self, entity_type: str, eid: int) -> None:
         """Удалить сущность по id и записать событие 'deleted'."""
+        self._check_conn()
         table, col = self._entity_table(entity_type)
         try:
             row = self._conn.execute(
                 f"SELECT {col} FROM {table} WHERE id = ?", (eid,)
             ).fetchone()
-        except sqlite3.Error as e:
-            raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
-        if not row:
-            raise NotFoundError(f"{entity_type.capitalize()} id={eid} not found.")
-        try:
+            if not row:
+                raise NotFoundError(
+                    f"{entity_type.capitalize()} id={eid} not found."
+                )
             self._log(entity_type, eid, row[0], "deleted")
             self._conn.execute(f"DELETE FROM {table} WHERE id = ?", (eid,))
             self._conn.commit()
+        except NotFoundError:
+            raise
         except sqlite3.Error as e:
             self._conn.rollback()
             raise DatabaseError(f"Failed to delete {entity_type}: {e}") from e
 
     def _get_entities(self, entity_type: str, search: str = "") -> list[sqlite3.Row]:
         """Вернуть сущности по подстроке поиска, отсортированные по имени."""
+        self._check_conn()
         table, col = self._entity_table(entity_type)
         try:
+            safe = self._escape_like(search.strip())
             return self._conn.execute(
-                f"SELECT * FROM {table} WHERE {col} LIKE ? ORDER BY {col}",
-                (f"%{search.strip()}%",),
+                f"SELECT * FROM {table} WHERE {col} LIKE ? ESCAPE '\\' ORDER BY {col}",
+                (f"%{safe}%",),
             ).fetchall()
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to fetch {entity_type}s: {e}") from e
@@ -240,6 +274,7 @@ class Database:
 
     def find_vehicle_by_number(self, number: str) -> sqlite3.Row | None:
         """Вернуть ТС с совпадающим нормализованным номером."""
+        self._check_conn()
         normalized = normalize_plate_number(number)
         if not normalized:
             return None
@@ -333,6 +368,7 @@ class Database:
         if status not in STATUS_ALL:
             raise ValueError(f"Unknown status: {status!r}")
 
+        self._check_conn()
         ts = _now()
         try:
             cur = self._conn.execute(
@@ -351,6 +387,11 @@ class Database:
             )
             self._purge_old_events()
             self._conn.commit()
+        except sqlite3.IntegrityError as e:
+            self._conn.rollback()
+            raise DatabaseError(
+                f"Integrity error updating status: {e}"
+            ) from e
         except sqlite3.Error as e:
             self._conn.rollback()
             raise DatabaseError(f"Failed to update status: {e}") from e
@@ -359,6 +400,7 @@ class Database:
 
     def get_events(self, search: str = "", limit: int = 300) -> list[sqlite3.Row]:
         """Вернуть события по подстроке поиска, новые сверху."""
+        self._check_conn()
         limit = min(max(0, int(limit)), 10_000)
         search = search.strip()
         try:
@@ -366,11 +408,13 @@ class Database:
                 return self._conn.execute(
                     "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
                 ).fetchall()
-            q = f"%{search}%"
+            q = f"%{self._escape_like(search)}%"
             return self._conn.execute(
                 """
                 SELECT * FROM events
-                WHERE entity_name LIKE :q OR event_type LIKE :q OR entity_type LIKE :q
+                WHERE entity_name LIKE :q ESCAPE '\\'
+                   OR event_type  LIKE :q ESCAPE '\\'
+                   OR entity_type LIKE :q ESCAPE '\\'
                 ORDER BY id DESC
                 LIMIT :lim
                 """,
@@ -381,6 +425,7 @@ class Database:
 
     def clear_events(self) -> None:
         """Удалить всю историю событий."""
+        self._check_conn()
         try:
             self._conn.execute("DELETE FROM events")
             self._conn.commit()
@@ -389,6 +434,7 @@ class Database:
 
     def recent_activity(self, limit: int = 5) -> list[sqlite3.Row]:
         """Вернуть последние события, новые сверху."""
+        self._check_conn()
         try:
             return self._conn.execute(
                 "SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)
@@ -402,6 +448,7 @@ class Database:
         """Вернуть агрегированные счётчики: vehicles, commanders, arrivals,
         departures, total_events.
         """
+        self._check_conn()
         try:
             row = self._conn.execute(
                 """
